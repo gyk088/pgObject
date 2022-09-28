@@ -5,8 +5,15 @@
   "main": "PgObject.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gyk007/ondeck"
+    "url": "https://github.com/gyk088/pgObject"
   },
-  "author": "",
-  "license": "MIT"
+  "keywords": [
+    "ORM",
+    "PostgreSQL",
+    "simple orm",
+    "pgObject"
+  ],
+  "author": "Andrey Zhuk <gyk088@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/gyk088/pgObject"
 }
