@@ -1,6 +1,6 @@
 {
   "name": "pgobject",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "pgObject - simple ORM for PostgreSQL",
   "main": "PgObject.js",
   "repository": {
@@ -11,7 +11,11 @@
     "ORM",
     "PostgreSQL",
     "simple orm",
-    "pgObject"
+    "pgObject",
+    "node ORM",
+    "js ORM",
+    "Postgres",
+    "SQL"
   ],
   "author": "Andrey Zhuk <gyk088@gmail.com>",
   "license": "MIT",
