@@ -2,7 +2,7 @@
 ## This orm is used with [PG][pg]
 
 ### Quick Example
-#### 1. Create a table in database:
+#### 1. Create a table in the database:
 ```SQL
 CREATE TABLE userExample (
     id           SERIAL,
@@ -27,7 +27,9 @@ class UserExample extends PgObject {
             },
             name: {},
             surname: {},
-            email: {},
+            email: {
+                required: true,
+            },
             token: {},
             createdDate: {
                 default: new Date(),
@@ -161,6 +163,7 @@ class UserExample extends PgObject {
                     }
                     return val;
                 },
+                required: true,
             },
             token: {
                 get (val, target, name) {
@@ -195,9 +198,175 @@ class UserExample extends PgObject {
 #### 1. `static get schema()` - return object:
 - `pk: true` - PRIMARY KEY
 - `computed: true` - This is a calculated field - it does not exist in the database
+- `required: true` - This fied is required
 - `default: new Date()` - Default value
 - `get (val, target, name)` - val: current value, target: all fields, name: name of this field
 - `set (val, target, name)` - val: new value, target: all fields, name: name of this field
+
+`pk: true`:
+You should define at least one field as the primary key.
+If your schema doesn't have a primary key you will see an error.
+```console
+Error, please set the PRIMARY KEY in the UserExample class
+```
+`computed: true`:
+If you want to have a field that does not exist in the database table and will not participate in an insert or update, you must set a computed property.
+Example: fullName is computed field
+```js
+class UserExample extends PgObject {
+    static get schema() {
+        return {
+           ...
+            fullName: {
+                computed: true
+            }
+        }
+    }
+    ...
+}
+
+const user = new UserExample({
+    fullName: 'Test Tets',
+    ...
+});
+
+console.log(user.f.fullName); // 'Test Tets';
+
+// fullName will not save in the database
+await user.save();
+```
+`required: true`:
+If you try to save your UserExample object to the database without values of the required fields  - you will see an error.
+Example: email is required field
+```js
+const user = new UserExample({
+    name: "nameExample",
+    surname: "surnameExample",
+});
+
+await user.save();
+// console:
+// Error: email field in UserExample object is required;
+```
+`default: someDefaultValue`
+You can set default values for fields
+```js
+class UserExample extends PgObject {
+    static get schema() {
+        return {
+           ...
+            name: {
+               default: 'Test',
+            }
+        }
+    }
+    ...
+}
+
+const user = new UserExample();
+console.log(user.f.name); // 'Test';
+// the name field will save with the default value ('Test');
+await user.save();
+
+user.f.name = 'newValue';
+// the name field will save with the new value ('newValue');
+await user.save();
+```
+
+`get (val, target, name)` - is like standart getter
+`val` - the current value of this field
+`target` - all fields of this object (this.f)
+`name` - string, name of this field
+Example:
+```js
+class UserExample extends PgObject {
+    static get schema() {
+        return {
+            id: {
+                pk: true,
+            },
+            name: {
+                default: 'TEST NAME',
+            },
+            surname: {
+                 get(val, target, name) {
+                    console.log('val:', val);
+                    console.log('target:', target);
+                    console.log('field name:', name);
+                    console.log('full name:', target.name, val);
+                    return `Surname - ${val}`;
+                }
+            },
+            ...
+    }
+    ...
+}
+
+const user = new UserExample();
+user.f.surname = 'SURNAME'
+const surname = user.f.surname;
+console.log(surname);
+// console:
+// val: SURNAME
+// target: {
+//  id: { pk: true },
+//  name: { default: 'TEST NAME' },
+//  surname: { get: [Function: get], value: 'SURNAME' },
+//  ...
+// }
+// field name: surname
+// full name: TEST NAME SURNAME
+// Surname - SURNAME
+```
+
+`set (val, target, name)` - is like standart setter
+`val` - new value of this field
+`target` - all fields of this object (this.f)
+`name` - string, name of this field
+Example:
+```js
+class UserExample extends PgObject {
+    static get schema() {
+        return {
+            id: {
+                pk: true,
+            },
+            name: {
+                default: 'TEST NAME',
+            },
+            surname: {
+                 set(val, target, name) {
+                    console.log('val:', val);
+                    console.log('target:', target);
+                    console.log('field name:', name);
+                    console.log('full name:', target.name, val);
+                    return `Surname - ${val}`;
+                }
+            },
+            ...
+    }
+    ...
+}
+
+const user = new UserExample();
+user.f.surname = 'NEW SURNAME';
+// console:
+// val: NEW SURNAME
+// target: {
+//  id: { pk: true },
+//  name: { default: 'TEST NAME' },
+//  surname: { set: [Function: set] },
+//  ...
+// }
+// name: surname
+// full name: TEST NAME NEW SURNAME
+
+// the surname field will save with the 'Surname - NEW SURNAME'  value ('newValue');
+await user.save();
+// console:
+// QueryLog:  INSERT INTO userExample ( name, surname ) VALUES ( $1, $2 ) RETURNING *
+// Values:  [ 'TEST NAME', 'Surname - NEW SURNAME' ]
+```
 
 #### 2. `static get table()` - return string with table name
 #### 3. `static get notValidateSchema()` - if return true - schema will be not validated
@@ -252,12 +421,23 @@ PgObject.setLogger(logger);
 
 const users = await UserExample.select("name = $1 LIMIT 1", ['newName']);
 // console:
-//MyLogger [Arguments] {
+// MyLogger [Arguments] {
 //  '0': 'QueryLog: ',
 //  '1': 'SELECT * FROM admin WHERE name = $1 LIMIT 1',
 //  '2': '\nValues: ',
 //  '3': [ 'newName' ]
-//}
+// }
+```
+
+## TO JSON
+If you want to serialize your object to JSON you can override `toJSON()` method;
+By default we serialize all fields in schema.
+Example:
+```js
+const users = await UserExample.select("name = $1 LIMIT 1", ['newName']);
+console.log(JSON.stringify(users));
+// console:
+// ["{\"id\":437,\"name\":\"TEST NAME\",\"createdDate\":\"2022-09-29T22:20:59.740Z\" ...]
 ```
 
 ## Transaction `PgTransaction`

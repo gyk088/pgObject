@@ -2,13 +2,15 @@ class PgObject {
     f = {};
     selected = false;
 
-
     static __primaryKeys = [];
+    static __requiredFields = [];
     static __client;
     static __log = false;
     static __logger = console;
+    static __isSetStaticFields = false;
 
     constructor(data) {
+        this.constructor.__setStaticFields();
         this.__createSchema();
         if (data) {
             this.__setValues(data);
@@ -31,6 +33,27 @@ class PgObject {
     static setLogger(logger) {
         PgObject.__logger = logger;
         PgTransaction.__logger = logger;
+    }
+
+    static __setStaticFields() {
+        if (this.__isSetStaticFields) return;
+
+        for (const key in this.schema) {
+            if (!this.schema[key]) continue;
+
+            if (this.schema[key].pk) {
+                this.__primaryKeys.push(key);
+            }
+            if (this.schema[key].required) {
+                this.__requiredFields.push(key);
+            }
+        }
+
+        if (!this.__primaryKeys.length) {
+            throw `Error, please set the PRIMARY KEY in the ${this.name} class`;
+        }
+
+        this.__isSetStaticFields = true;
     }
 
     static async query(queryStr, values, classObj) {
@@ -74,8 +97,9 @@ class PgObject {
     }
 
     async insert() {
-        const keyVal = this.__keysValues();
+        this.__validateRequiredFields();
 
+        const keyVal = this.__keysValues();
         const insertStr = `INSERT INTO ${this.constructor.table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
 
         const data = await PgObject.query(insertStr, keyVal.values);
@@ -86,8 +110,9 @@ class PgObject {
     }
 
     async update() {
-        const keyVal = this.__keysValues();
+        this.__validateRequiredFields();
 
+        const keyVal = this.__keysValues();
         const updateArr = keyVal.keys.map((k, i) => `${k} = ${keyVal.counts[i]}`);
 
         let i = keyVal.counts.length;
@@ -154,17 +179,20 @@ class PgObject {
         throw `Error, ${key} is not in the schema, check your schema getter, or notValidateSchema should return true`;
     }
 
-    __createSchema() {
-        for (const key in this.constructor.schema) {
-            if (this.constructor.schema[key] && this.constructor.schema[key].pk) {
-                this.constructor.__primaryKeys.push(key);
+    __validateRequiredFields() {
+        let errorString = '';
+        for (const key of this.constructor.__requiredFields) {
+            if (!this.f[key]) {
+                errorString += `${key} field in ${this.constructor.name} object is required; `;
             }
         }
 
-        if (!this.constructor.__primaryKeys.length) {
-            throw `Error, please set the PRIMARY KEY in the ${this.constructor.name} class`;
+        if (errorString) {
+            throw "Error: " + errorString;
         }
+    }
 
+    __createSchema() {
         this.f = new Proxy(this.constructor.schema, {
             get: (target, name) => {
                 this.__validateSchema(name);
