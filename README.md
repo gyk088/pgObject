@@ -239,6 +239,18 @@ await user.save();
 If you try to save your UserExample object to the database without values of the required fields  - you will see an error.
 Example: email is required field
 ```js
+class UserExample extends PgObject {
+    static get schema() {
+        return {
+           ...
+            email: {
+               required: true,
+            }
+        }
+    }
+    ...
+}
+
 const user = new UserExample({
     name: "nameExample",
     surname: "surnameExample",
