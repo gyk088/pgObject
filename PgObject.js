@@ -30,7 +30,7 @@ class PgObject {
 
     static setLogger(logger) {
         PgObject.__logger = logger;
-        PgTransaction.__logger = __logger;
+        PgTransaction.__logger = logger;
     }
 
     static async query(queryStr, values, classObj) {
@@ -263,7 +263,10 @@ class PgTransaction {
     }
 
     static async start(mode) {
-        mode = PgTransaction.mode[mode] ? PgTransaction.mode[mode] : PgTransaction.mode.readUncommitted;
+        if (Object.values(this.mode).indexOf(mode) === -1) {
+            mode = this.mode.readUncommitted;
+        }
+
         await PgTransaction.query(`START TRANSACTION ISOLATION LEVEL ${mode}`);
     }
 
