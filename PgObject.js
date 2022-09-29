@@ -2,6 +2,7 @@ class PgObject {
     f = {};
     selected = false;
 
+
     static __primaryKeys = [];
     static __client;
     static __log = false;
@@ -78,7 +79,8 @@ class PgObject {
         const insertStr = `INSERT INTO ${this.constructor.table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
 
         const data = await PgObject.query(insertStr, keyVal.values);
-        this.__setValues(data.rows[0])
+        this.__setValues(data.rows[0]);
+        this.selected = true;
 
         return this;
     }
@@ -174,9 +176,9 @@ class PgObject {
                 }
 
                 if (target[name].default && typeof target[name].get === 'function') {
-                    return target[name].get(target[name].value, target, name) === undefined
+                    return target[name].get(target[name].value, this.f, name) === undefined
                         ? target[name].default
-                        : target[name].get(target[name].value, target, name);
+                        : target[name].get(target[name].value, this.f, name);
                 }
 
                 if (target[name].default) {
@@ -186,7 +188,7 @@ class PgObject {
                 }
 
                 if (typeof target[name].get === 'function') {
-                    return target[name].get(target[name].value, target, name);
+                    return target[name].get(target[name].value, this.f, name);
                 }
 
                 return target[name].value;
@@ -200,7 +202,7 @@ class PgObject {
                     }
                 }
                 if (target[name].set) {
-                    target[name].value = target[name].set(value, target, name);
+                    target[name].value = target[name].set(value, this.f, name);
                 } else {
                     target[name].value = value;
                 }
