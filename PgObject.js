@@ -123,8 +123,8 @@ class PgObject {
             keyVal.values.push(this.f[pk]);
         });
 
-        const insertStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
-        const data = await PgObject.query(insertStr, keyVal.values);
+        const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
+        const data = await PgObject.query(updateStr, keyVal.values);
         this.__setValues(data.rows[0]);
 
         return this;
@@ -137,6 +137,22 @@ class PgObject {
             await this.insert();
         }
 
+        return this;
+    }
+
+    async delete() {
+        const where = []
+        const values = []
+        let i = 0;
+        this.constructor.__primaryKeys.forEach(pk => {
+            i++;
+            where.push(`${pk} = \$${i}`);
+            values.push(this.f[pk]);
+        });
+
+        const deleteStr = `DELETE FROM ${this.constructor.table} WHERE ${where.join(' AND ')}`;
+        await PgObject.query(deleteStr, values);
+        this.selected = false;
         return this;
     }
 

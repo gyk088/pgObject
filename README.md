@@ -86,6 +86,8 @@ await users1[0].save(); // OR await users1[0].update();
 const users2 = await UserExample.select("name = $1 LIMIT 1", ['nameExample']);
 console.log(users1[0].f.name); // "nameExample"
 console.log(users1[0].f.surname); // "newSurname"
+
+await users2[0].delete();
 ```
 ## Query to PostgreSQL
 #### 1. Static method `select`:
@@ -139,9 +141,18 @@ await user.insert();
 const users = await UserExample.select("name = $1 LIMIT 1", ["nameExample"]);
 users[0].f.name = "newName";
 
-await user.update();
+await users[0].update();
 ```
 -`update()` - update this object in the database
+
+#### 5. Method `delete`
+```js
+const users = await UserExample.select("name = $1 LIMIT 1", ["nameExample"]);
+
+
+await users[0].delete();
+```
+-`delete()` - delete this object from the database
 
 ## PgObject class extension
 For the PgObject class extension we must define `static get schema()` and `static get table()`
