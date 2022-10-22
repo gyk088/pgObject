@@ -1,13 +1,31 @@
+const __PgQuery = require('./__PgQuery');
+const __MySqlQuery = require('./__MySqlQuery');
+
 class PgObject {
     f = {};
     selected = false;
 
     static __primaryKeys = [];
     static __requiredFields = [];
+
     static __client;
+    static __types = {
+        postgresql: __PgQuery,
+        mysql: __MySqlQuery,
+    }
+
+    static __queryClass = PgObject.__types.postgresql;
+
     static __log = false;
     static __logger = console;
     static __isSetStaticFields = false;
+
+    static mode = {
+        serializable: 'SERIALIZABLE',
+        repeatableRead: 'REPEATABLE READ',
+        readCommitted: 'READ COMMITTED',
+        readUncommitted: 'READ UNCOMMITTED',
+    }
 
     constructor(data) {
         this.constructor.__setStaticFields();
@@ -21,18 +39,20 @@ class PgObject {
     static get table() {}
     static get notValidateSchema() { return false }
 
-    static setClient(client) {
+    static setClient(client, type) {
         PgObject.__client = client;
+        PgObject.__queryClass = type ? PgObject.__types[type] : PgObject.__queryClass;
+        if (!PgObject.__queryClass) {
+            throw `Error, please set corret type of database ${Object.keys(PgObject.__types).join(', ')}. By default ${Object.keys(PgObject.__types)[0]}`;
+        }
     }
 
     static setLog(log) {
         PgObject.__log = log;
-        PgTransaction.__log = log;
     }
 
     static setLogger(logger) {
         PgObject.__logger = logger;
-        PgTransaction.__logger = logger;
     }
 
     static __setStaticFields() {
@@ -56,78 +76,24 @@ class PgObject {
         this.__isSetStaticFields = true;
     }
 
-    static async query(queryStr, values, classObj) {
-        try {
-            if (PgObject.__log) {
-                PgObject.__logger.log('QueryLog: ', queryStr, '\nValues: ', values);
-            }
-
-            const data = await PgObject.__client.query(queryStr, values);
-
-            if (classObj) {
-                const arr = [];
-                for (const row of data.rows) {
-                    const obj = new classObj(row);
-                    obj.selected = true;
-                    arr.push(obj);
-                }
-
-                return arr;
-            }
-
-            return data;
-        } catch (e) {
-            PgObject.__logger.log('Query error', e);
-            return null;
-        }
+    static query(queryStr, values, classObj) {
+        return PgObject.__queryClass.query.call(this, queryStr, values, classObj);
     }
 
-    static async select(whereString, values) {
-        whereString = whereString ? 'WHERE ' + whereString : '';
-        const data = await PgObject.query(`SELECT * FROM ${this.table} ${whereString}`, values);
-        const arr = [];
-        if (!data) return arr;
-        for (const row of data.rows) {
-            const obj = new this(row);
-            obj.selected = true;
-            arr.push(obj);
-        }
-
-        return arr;
+    static select(whereString, values) {
+        return PgObject.__queryClass.select.call(this, whereString, values);
     }
 
     async insert() {
-        this.__validateRequiredFields();
-
-        const keyVal = this.__keysValues();
-        const insertStr = `INSERT INTO ${this.constructor.table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
-
-        const data = await PgObject.query(insertStr, keyVal.values);
-        this.__setValues(data.rows[0]);
-        this.selected = true;
-
-        return this;
+        return PgObject.__queryClass.insert.call(this);
     }
 
     async update() {
-        this.__validateRequiredFields();
+        return PgObject.__queryClass.update.call(this);
+    }
 
-        const keyVal = this.__keysValues();
-        const updateArr = keyVal.keys.map((k, i) => `${k} = ${keyVal.counts[i]}`);
-
-        let i = keyVal.counts.length;
-        const where = []
-        this.constructor.__primaryKeys.forEach(pk => {
-            i++;
-            where.push(`${pk} = \$${i}`);
-            keyVal.values.push(this.f[pk]);
-        });
-
-        const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
-        const data = await PgObject.query(updateStr, keyVal.values);
-        this.__setValues(data.rows[0]);
-
-        return this;
+    async delete() {
+        return PgObject.__queryClass.delete.call(this);
     }
 
     async save() {
@@ -140,26 +106,12 @@ class PgObject {
         return this;
     }
 
-    async delete() {
-        const where = []
-        const values = []
-        let i = 0;
-        this.constructor.__primaryKeys.forEach(pk => {
-            i++;
-            where.push(`${pk} = \$${i}`);
-            values.push(this.f[pk]);
-        });
-
-        const deleteStr = `DELETE FROM ${this.constructor.table} WHERE ${where.join(' AND ')}`;
-        await PgObject.query(deleteStr, values);
-        this.selected = false;
-        return this;
-    }
-
     __setValues(data) {
         for (const key in data) {
             this.__validateSchema(key);
-            this.f[key] = data[key];
+            if (this.constructor.schema[key]) {
+                this.f[key] = data[key];
+            }
         }
     }
 
@@ -256,6 +208,29 @@ class PgObject {
         });
     }
 
+    static async startTransaction(mode) {
+        await PgObject.__queryClass.startTransaction.call(this, mode);
+    }
+
+    static async commit() {
+        await PgObject.__queryClass.commit.call(this);
+    }
+
+    static async rollback() {
+        await PgObject.__queryClass.rollback.call(this);
+    }
+
+    static async createTransaction(cb, mode) {
+        await this.startTransaction(mode);
+        try {
+            await cb();
+            await this.commit();
+        } catch (e) {
+            await this.rollback();
+            this.__logger.log('TRANSACTION ERROR: ', e);
+        }
+    }
+
     toJSON() {
         const objToJson = {};
         for (const key in this.f) {
@@ -266,72 +241,4 @@ class PgObject {
     }
 }
 
-class PgTransaction {
-    static __client = PgObject.__client;
-    static __logger = PgObject.__logger;
-    static log = PgObject.__log;
-
-    static mode = {
-        serializable: 'SERIALIZABLE',
-        repeatableRead: 'REPEATABLE READ',
-        readCommitted: 'READ COMMITTED',
-        readUncommitted: 'READ UNCOMMITTED',
-    }
-
-    static setClient(client) {
-        PgTransaction.__client = client;
-    }
-
-    static setLog(log) {
-        PgTransaction.__log = log;
-    }
-
-    static setLogger(logger) {
-        PgTransaction.__logger = logger;
-    }
-
-    static async query(queryStr) {
-        if (PgTransaction.__log) {
-            PgTransaction.__logger.log('QueryLog: ', queryStr);
-        }
-
-        if (!PgTransaction.__client) {
-            PgTransaction.__client = PgObject.__client;
-        }
-
-        try {
-            await PgTransaction.__client.query(queryStr);
-        } catch (e) {
-            PgTransaction.__logger.log('Transaction error', e);
-        }
-    }
-
-    static async start(mode) {
-        if (Object.values(this.mode).indexOf(mode) === -1) {
-            mode = this.mode.readUncommitted;
-        }
-
-        await PgTransaction.query(`START TRANSACTION ISOLATION LEVEL ${mode}`);
-    }
-
-    static async commit() {
-        await PgTransaction.query('COMMIT');
-    }
-
-    static async rollback() {
-        await PgTransaction.query('ROLLBACK');
-    }
-
-    static async create(cb, mode) {
-        await PgTransaction.start(mode);
-        try {
-            await cb();
-            await PgTransaction.commit();
-        } catch (e) {
-            await PgTransaction.rollback();
-            PgTransaction.__logger.log('TRANSACTION ERROR: ', e);
-        }
-    }
-}
-
-module.exports = { PgObject, PgTransaction }
+module.exports = PgObject;

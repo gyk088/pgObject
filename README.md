@@ -1,7 +1,9 @@
-# pgObject - simple ORM for PostgreSQL
-## This orm is used with [PG][pg]
+# pgObject - simple ORM for PostgreSQL and MySql
 
-### Quick Example
+## For PostgreSQL orm is used with [PG][pg]
+## For MySQL orm is used with [mysql][mysql] or [mysql2][mysql2]
+
+### Quick Example (PostgreSQL). For MySql it works the same.
 #### 1. Create a table in the database:
 ```SQL
 CREATE TABLE userExample (
@@ -17,7 +19,7 @@ CREATE TABLE userExample (
 ```
 #### 2. Create a class:
 ```js
-const { PgObject } = require('pgobject');
+const PgObject = require('pgobject');
 
 class UserExample extends PgObject {
     static get schema() {
@@ -44,9 +46,10 @@ class UserExample extends PgObject {
 ```
 
 #### 3. pgObject configuration:
+##### PostgreSQL:
 ```js
 const { Client } = require('pg');
-const { PgObject } = require('pgobject');
+const PgObject = require('pgobject');
 
 const client = new Client({
     user: process.env.DB_USER,
@@ -59,6 +62,21 @@ const client = new Client({
 await client.connect();
 
 PgObject.setClient(client);
+```
+##### MySQl:
+```js
+const mysql = require('mysql2');
+const PgObject = require('pgobject');
+
+const client = mysql.createConnection({
+    user: process.env.DB_USER,
+    host: process.env.DB_HOST,
+    database: process.env.DB_NAME,
+    password: process.env.DB_PASS,
+    port: process.env.DB_PORT,
+});
+
+PgObject.setClient(client, 'mysql');
 ```
 
 #### 4. Use this class:
@@ -157,7 +175,7 @@ await users[0].delete();
 ## PgObject class extension
 For the PgObject class extension we must define `static get schema()` and `static get table()`
 ```js
-const { PgObject } = require('pgobject');
+const PgObject = require('pgobject');
 
 class UserExample extends PgObject {
     static get schema() {
@@ -412,7 +430,7 @@ And after that, you will see log in your console.
 Example:
 ```js
 PgObject.setLog(true);
-const users = await UserExample.select("name = $1 LIMIT 1", ['newName']);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
 // console:
 // QueryLog:  SELECT * FROM admin WHERE name = $1 LIMIT 1
 // Values:  [ 'newName' ]
@@ -442,7 +460,7 @@ const logger = {
 PgObject.setLog(true);
 PgObject.setLogger(logger);
 
-const users = await UserExample.select("name = $1 LIMIT 1", ['newName']);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
 // console:
 // MyLogger [Arguments] {
 //  '0': 'QueryLog: ',
@@ -457,19 +475,18 @@ If you want to serialize your object to JSON you can override `toJSON()` method;
 By default we serialize all fields in schema.
 Example:
 ```js
-const users = await UserExample.select("name = $1 LIMIT 1", ['newName']);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
 console.log(JSON.stringify(users));
 // console:
 // ["{\"id\":437,\"name\":\"TEST NAME\",\"createdDate\":\"2022-09-29T22:20:59.740Z\" ...]
 ```
 
-## Transaction `PgTransaction`
-For transaction you can use `PgTransaction` class
+## Transaction
 #### Quick Example
 ```js
 PgObject.setLog(true);
 
-await PgTransaction.create(async () => {
+await PgObject.createTransaction(async () => {
     const user1 = new UserExample();
     user1.f.name = 'user1';
     const user2 = new UserExample();
@@ -487,22 +504,23 @@ await PgTransaction.create(async () => {
 ```
 
 #### Transaction Isolation
-- `READ UNCOMMITTED` - PgTransaction.mode.readUncommitted (by default)
-- `READ COMMITTED` - PgTransaction.mode.readCommitted
-- `REPEATABLE READ` - PgTransaction.mode.repeatableRead
-- `SERIALIZABLE` - PgTransaction.mode.serializable
+- `READ UNCOMMITTED` - PgObject.mode.readUncommitted (by default)
+- `READ COMMITTED` - PgObject.mode.readCommitted
+- `REPEATABLE READ` - PgObject.mode.repeatableRead
+- `SERIALIZABLE` - PgObject.mode.serializable
 
 example:
 ```js
 PgObject.setLog(true);
-await PgTransaction.create(async () => {
+
+await PgObject.create(async () => {
     const user1 = new UserExample();
     user1.f.name = 'user1';
     const user2 = new UserExample();
     user2.f.name = 'user2';
     await user1.save();
     await user2.save();
-}, PgTransaction.mode.serializable);
+}, PgObject.mode.serializable);
 // console:
 // QueryLog:  START TRANSACTION ISOLATION LEVEL SERIALIZABLE
 // QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
@@ -511,15 +529,33 @@ await PgTransaction.create(async () => {
 // Values:  [ 'user2', 2022-09-29T13:45:20.620Z ]
 // QueryLog:  COMMIT
 ```
-#### PgTransaction methods
-- `PgTransaction.create(cb, mode)` - create a transaction. cb - function, mode - isolation level
-- `PgTransaction.start(mode)` - start transaction. mode - isolation level
-- `PgTransaction.commit()` - commit transaction.
-- `PgTransaction.rollback()` - rollback transaction.
+#### PgObject public methods:
+- `.insert()` - insert data.
+- `.update()` - update data.
+- `.delete()` - delete data.
+- `.save()` - insert or update data.
+#### PgObject static methods:
+- `PgObject.setClient(Object client, String type)` - set db client. client - db client, type - 'mysql' or 'postgresql', by default 'postgresql'.
+- `PgObject.setLog(Boolean log)` - if true, write a log to the console.
+- `PgObject.setLogger(Object logger)` - install your own logger.
+- `PgObject.query(String query, Array values, Class classObj)` - create a db query
+- `PgObject.select(String whereString, Array values)` - select data from db
+- `PgObject.createTransaction(Function cb, PgObject.mode mode)` - create a transaction. cb - function, mode - isolation level
+- `PgObject.startTransaction(PgObject.mode mode)` - start transaction. mode - isolation level
+- `PgObject.commit()` - commit transaction.
+- `PgObject.rollback()` - rollback transaction.
+
+#### PgObject override methods:
+- `static get schema() {}`
+- `static get table() {}`
+- `static get notValidateSchema() { }`
+- `toJSON() {}`
 
 ## License
 MIT
 
 
 [pg]: https://node-postgres.com/
+[mysql]: https://www.npmjs.com/package/mysql
+[mysql2]: https://www.npmjs.com/package/mysql2
 [pgQuery]: https://node-postgres.com/features/queries
