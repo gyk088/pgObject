@@ -1,6 +1,6 @@
 {
   "name": "pgobject",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "pgObject - simple ORM for PostgreSQL",
   "main": "PgObject.js",
   "repository": {

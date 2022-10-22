@@ -91,7 +91,7 @@ console.log(userExample.f.surname); // "surnameExample"
 
 await userExample.save(); // OR await userExample.insert();
 
-const users1 = await UserExample.select("name = $1 LIMIT 1", ['nameExample']);
+const users1 = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
 // OR await PgObject
 //    .query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample'], UserExample);
 
@@ -101,7 +101,7 @@ console.log(users1[0].f.surname); // "surnameExample"
 users1[0].f.surname = "newSurname";
 await users1[0].save(); // OR await users1[0].update();
 
-const users2 = await UserExample.select("name = $1 LIMIT 1", ['nameExample']);
+const users2 = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
 console.log(users1[0].f.name); // "nameExample"
 console.log(users1[0].f.surname); // "newSurname"
 
@@ -110,7 +110,7 @@ await users2[0].delete();
 ## Query to PostgreSQL
 #### 1. Static method `select`:
 ```js
-const users = await UserExample.select("name = $1 LIMIT 1", ['nameExample']);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
 ```
 - `static select(String where, Array values)` - return array of UserExample objects;
 #### 2. Static method `query`:
@@ -156,7 +156,7 @@ await user.insert();
 
 #### 5. Method `update`
 ```js
-const users = await UserExample.select("name = $1 LIMIT 1", ["nameExample"]);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ["nameExample"]);
 users[0].f.name = "newName";
 
 await users[0].update();
@@ -165,7 +165,7 @@ await users[0].update();
 
 #### 5. Method `delete`
 ```js
-const users = await UserExample.select("name = $1 LIMIT 1", ["nameExample"]);
+const users = await UserExample.select("WHERE name = $1 LIMIT 1", ["nameExample"]);
 
 
 await users[0].delete();
