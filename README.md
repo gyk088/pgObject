@@ -107,7 +107,7 @@ console.log(users1[0].f.surname); // "newSurname"
 
 await users2[0].delete();
 ```
-## Query to PostgreSQL
+## Query to DB
 #### 1. Static method `select`:
 ```js
 const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
