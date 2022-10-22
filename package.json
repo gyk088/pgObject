@@ -1,6 +1,6 @@
 {
   "name": "pgobject",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "pgObject - simple ORM for PostgreSQL",
   "main": "PgObject.js",
   "repository": {
@@ -21,11 +21,5 @@
   ],
   "author": "Andrey Zhuk <gyk088@gmail.com>",
   "license": "MIT",
-  "homepage": "https://github.com/gyk088/pgObject",
-  "dependencies": {
-    "dotenv": "^16.0.3",
-    "mysql": "^2.18.1",
-    "mysql2": "^2.3.3",
-    "pg": "^8.8.0"
-  }
+  "homepage": "https://github.com/gyk088/pgObject"
 }
