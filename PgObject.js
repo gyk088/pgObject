@@ -161,6 +161,11 @@ class PgObject {
     }
 
     __createSchema() {
+
+        if (!this.constructor.schema) {
+            throw "Error: please define your schema getter";
+        }
+
         this.f = new Proxy(this.constructor.schema, {
             get: (target, name) => {
                 this.__validateSchema(name);

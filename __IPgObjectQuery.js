@@ -1,7 +1,9 @@
+const PgObject = require('./PgObject');
 class __IPgObjectQuery {
     static async select(whereString, values) {
         const data = await this.query(`SELECT * FROM ${this.table} ${whereString}`, values);
         const arr = [];
+
         if (!data) return arr;
         for (const row of data.rows) {
             const obj = new this(row);
