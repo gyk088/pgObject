@@ -1,3 +1,11 @@
+/**
+ * This file contain examples to use this ORM.
+ * If you want to run this examples on your localhost execute this commands:
+ * 1. git clone git@github.com:gyk088/pgObject.git
+ * 2. docker-compose up -d
+ * 3. npm install
+ * 4. node example.js
+ */
 
 const { Client } = require('pg');
 var mysql = require('mysql2');

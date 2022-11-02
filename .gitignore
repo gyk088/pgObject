@@ -1,11 +1,1 @@
 /node_modules
-admin.js
-test.js
-/db1
-/db2
-mysql.sql
-psq.sql
-package-lock.json
-docker-compose.yml
-admin2.js
-.env

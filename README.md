@@ -3,6 +3,10 @@
 ## For PostgreSQL orm is used with [PG][pg]
 ## For MySQL orm is used with [mysql][mysql] or [mysql2][mysql2]
 
+## [Exaple][example]
+
+### Quick Example (PostgreSQL). For MySql it works the same.
+
 ### Quick Example (PostgreSQL). For MySql it works the same.
 #### 1. Create a table in the database:
 ```SQL
@@ -559,3 +563,4 @@ MIT
 [mysql]: https://www.npmjs.com/package/mysql
 [mysql2]: https://www.npmjs.com/package/mysql2
 [pgQuery]: https://node-postgres.com/features/queries
+[example]: https://github.com/gyk088/pgObject/blob/main/example.js
