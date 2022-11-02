@@ -3,9 +3,7 @@
 ## For PostgreSQL orm is used with [PG][pg]
 ## For MySQL orm is used with [mysql][mysql] or [mysql2][mysql2]
 
-## [Exaple][example]
-
-### Quick Example (PostgreSQL). For MySql it works the same.
+### [Exaple][example]
 
 ### Quick Example (PostgreSQL). For MySql it works the same.
 #### 1. Create a table in the database:
