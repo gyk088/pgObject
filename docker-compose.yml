@@ -1,0 +1,27 @@
+# Use root/example as user/password credentials
+version: '3.1'
+
+services:
+  db1:
+    image: mysql:latest
+    command: --default-authentication-plugin=mysql_native_password
+    restart: always
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: pgobject
+      MYSQL_DATABASE: pgobject
+      MYSQL_USER: pgobject
+      MYSQL_PASSWORD: pgobject
+
+  db2:
+    image: postgres:latest
+    restart: always
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: pgobject
+      POSTGRES_USER: pgobject
+      POSTGRES_DB: pgobject
+      APP_DB_PASS: pgobject
+      APP_DB_NAME: pgobject
