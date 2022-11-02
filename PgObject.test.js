@@ -125,7 +125,7 @@ describe('Test for MySql', () => {
         query = jest.fn((queryStr, values, cb) => {
             cb(null, [{id:1, name: 'TestName', surname: 'TestSurname'}]);
         });
-        PgObject.setClient({ query });
+        PgObject.setClient({ query }, 'mysql');
         PgObject.setLog(true);
     });
 
