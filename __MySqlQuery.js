@@ -4,28 +4,24 @@ class __MySqlQuery extends __IPgObjectQuery {
     static query(queryStr, values, classObj) {
         queryStr = queryStr.replace(/\$\d*/g, '?');
         queryStr = queryStr.replace('RETURNING *', '');
-        if (this.__log) {
-            this.__logger.log('QueryLog: ', queryStr, '\nValues: ', values);
-        }
         return new Promise((resolve, reject) => {
             this.__client.query(queryStr, values, (error, results, fields) => {
                 if (error) {
-                    this.__logger.log('Query error', error);
                     reject(error);
-                }
+                } else {
+                    if (classObj) {
+                        const arr = [];
+                        for (const row of results) {
+                            const obj = new classObj(row);
+                            obj.selected = true;
+                            arr.push(obj);
+                        }
 
-                if (classObj) {
-                    const arr = [];
-                    for (const row of results) {
-                        const obj = new classObj(row);
-                        obj.selected = true;
-                        arr.push(obj);
+                        resolve(arr);
+                    } else {
+                        resolve({rows: results, fields});
                     }
-
-                    resolve(arr);
                 }
-
-                resolve({rows: results, fields});
             });
         });
     }

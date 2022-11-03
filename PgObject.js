@@ -76,8 +76,26 @@ class PgObject {
         this.__isSetStaticFields = true;
     }
 
-    static query(queryStr, values, classObj) {
-        return PgObject.__queryClass.query.call(this, queryStr, values, classObj);
+    static async query(queryStr, values, classObj) {
+        try {
+            let start;
+            if (this.__log) {
+                start = Date.now();
+            }
+            const data = await PgObject.__queryClass.query.call(this, queryStr, values, classObj);
+            if (this.__log) {
+                const end = Date.now();
+                this.__logger.log(
+                    '\x1b[32m', 'Query: ', queryStr, "\x1b[0m",
+                    '\nValues: ', values,
+                    '\nExecution time:', end - start, 'ms'
+                );
+            }
+            return data;
+        } catch (e) {
+            this.__logger.log("\x1b[31m", `SQL ERORR: ${queryStr}, values ${values};`, "\x1b[0m", e);
+            throw e;
+        }
     }
 
     static select(whereString, values) {

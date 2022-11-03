@@ -409,6 +409,7 @@ await user.save();
 // console:
 // QueryLog:  INSERT INTO userExample ( name, surname ) VALUES ( $1, $2 ) RETURNING *
 // Values:  [ 'TEST NAME', 'Surname - NEW SURNAME' ]
+// Execution time: 1 ms
 ```
 
 #### 2. `static get table()` - return string with table name
@@ -436,6 +437,7 @@ const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
 // console:
 // QueryLog:  SELECT * FROM admin WHERE name = $1 LIMIT 1
 // Values:  [ 'newName' ]
+// Execution time: 1 ms
 
 const user = new UserExample({
     name: "nameExample",
@@ -446,6 +448,7 @@ await user.save();
 // console:
 // QueryLog:  INSERT INTO admin ( name, surname, ctime ) VALUES ( $1, $2, $3 ) RETURNING *
 // Values:  [ 'nameExample', 'surnameExample', 2022-09-29T13:04:34.257Z ]
+// Execution time: 1 ms
 ```
 
 #### 2. `PgObject.setLogger(console)` - enable the log
@@ -465,10 +468,15 @@ PgObject.setLogger(logger);
 const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
 // console:
 // MyLogger [Arguments] {
-//  '0': 'QueryLog: ',
-//  '1': 'SELECT * FROM admin WHERE name = $1 LIMIT 1',
-//  '2': '\nValues: ',
-//  '3': [ 'newName' ]
+//   '0': '\x1B[32m',
+//   '1': 'Query: ',
+//   '2': 'DELETE FROM exapmleAdmin WHERE id = $1',
+//   '3': '\x1B[0m',
+//   '4': '\nValues: ',
+//   '5': [ 6 ],
+//   '6': '\nExecution time:',
+//   '7': 3,
+//   '8': 'ms'
 // }
 ```
 
@@ -498,11 +506,17 @@ await PgObject.createTransaction(async () => {
 });
 // console:
 // QueryLog:  START TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
+// Values:  undefined
+// Execution time: 1 ms
 // QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
 // Values:  [ 'user1', 2022-09-29T13:45:20.620Z ]
+// Execution time: 1 ms
 // QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
 // Values:  [ 'user2', 2022-09-29T13:45:20.620Z ]
+// Execution time: 1 ms
 // QueryLog:  COMMIT
+// Values:  undefined
+// Execution time: 1 ms
 ```
 
 #### Transaction Isolation
@@ -525,11 +539,17 @@ await PgObject.create(async () => {
 }, PgObject.mode.serializable);
 // console:
 // QueryLog:  START TRANSACTION ISOLATION LEVEL SERIALIZABLE
+// Values:  undefined
+// Execution time: 1 ms
 // QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
 // Values:  [ 'user1', 2022-09-29T13:45:20.620Z ]
+// Execution time: 1 ms
 // QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
 // Values:  [ 'user2', 2022-09-29T13:45:20.620Z ]
+// Execution time: 1 ms
 // QueryLog:  COMMIT
+// Values:  undefined
+// Execution time: 1 ms
 ```
 #### PgObject public methods:
 - `.insert()` - insert data.

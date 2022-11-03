@@ -3,10 +3,6 @@ const __IPgObjectQuery = require('./__IPgObjectQuery');
 class __PgQuery extends __IPgObjectQuery {
     static async query(queryStr, values, classObj) {
         try {
-            if (this.__log) {
-                this.__logger.log('QueryLog: ', queryStr, '\nValues: ', values);
-            }
-
             const data = await this.__client.query(queryStr, values);
 
             if (classObj) {
@@ -22,7 +18,6 @@ class __PgQuery extends __IPgObjectQuery {
 
             return data;
         } catch (e) {
-            this.__logger.log('Query error', e);
             throw e;
         }
     }
