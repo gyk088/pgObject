@@ -6,7 +6,7 @@ class __IPgObjectQuery {
 
         if (!data) return arr;
         for (const row of data.rows) {
-            const obj = new this(row);
+            const obj = new this(row, true);
             obj.selected = true;
             arr.push(obj);
         }

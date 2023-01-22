@@ -12,7 +12,7 @@ class __PgQuery extends __IPgObjectQuery {
             if (classObj) {
                 const arr = [];
                 for (const row of data.rows) {
-                    const obj = new classObj(row);
+                    const obj = new classObj(row, true);
                     obj.selected = true;
                     arr.push(obj);
                 }
@@ -34,7 +34,7 @@ class __PgQuery extends __IPgObjectQuery {
         const insertStr = `INSERT INTO ${this.constructor.table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
 
         const data = await this.constructor.query(insertStr, keyVal.values);
-        this.__setValues(data.rows[0]);
+        this.__setValues(data.rows[0], true);
         this.selected = true;
 
         return this;
@@ -56,7 +56,7 @@ class __PgQuery extends __IPgObjectQuery {
 
         const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
         const data = await this.constructor.query(updateStr, keyVal.values);
-        this.__setValues(data.rows[0]);
+        this.__setValues(data.rows[0], true);
 
         return this;
     }

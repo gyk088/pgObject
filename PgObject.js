@@ -4,6 +4,7 @@ const __MySqlQuery = require('./__MySqlQuery');
 class PgObject {
     f = {};
     selected = false;
+    __updatedFields = new Set();
 
     static __primaryKeys = [];
     static __requiredFields = [];
@@ -27,11 +28,12 @@ class PgObject {
         readUncommitted: 'READ UNCOMMITTED',
     }
 
-    constructor(data) {
+    constructor(data, force) {
         this.constructor.__setStaticFields();
         this.__createSchema();
+
         if (data) {
-            this.__setValues(data);
+            this.__setValues(data, force);
         }
     }
 
@@ -85,15 +87,21 @@ class PgObject {
     }
 
     async insert() {
-        return PgObject.__queryClass.insert.call(this);
+        const res = PgObject.__queryClass.insert.call(this);
+        this.__updatedFields = new Set();
+        return res
     }
 
     async update() {
-        return PgObject.__queryClass.update.call(this);
+        const res = PgObject.__queryClass.update.call(this);
+        this.__updatedFields = new Set();
+        return res
     }
 
     async delete() {
-        return PgObject.__queryClass.delete.call(this);
+        const res = PgObject.__queryClass.delete.call(this);
+        this.__updatedFields = new Set();
+        return res
     }
 
     async save() {
@@ -106,13 +114,16 @@ class PgObject {
         return this;
     }
 
-    __setValues(data) {
+    __setValues(data, force) {
+        this.force = force;
         for (const key in data) {
             this.__validateSchema(key);
+
             if (this.constructor.schema[key]) {
                 this.f[key] = data[key];
             }
         }
+        this.force = false;
     }
 
     __keysValues() {
@@ -125,6 +136,7 @@ class PgObject {
         let i = 1;
         for (const key in this.f) {
             if (this.f[key] === undefined) continue;
+            if (!this.__updatedFields.has(key)) continue;
             if (this.constructor.schema[key].primaryKey) continue;
             if (this.constructor.schema[key].computed) continue;
 
@@ -161,7 +173,6 @@ class PgObject {
     }
 
     __createSchema() {
-
         if (!this.constructor.schema) {
             throw "Error: please define your schema getter";
         }
@@ -202,10 +213,14 @@ class PgObject {
                         value: undefined
                     }
                 }
-                if (target[name].set) {
+                if (target[name].set && !this.force) {
                     target[name].value = target[name].set(value, this.f, name);
                 } else {
                     target[name].value = value;
+                }
+
+                if (!this.force) {
+                    this.__updatedFields.add(name)
                 }
 
                 return true;
