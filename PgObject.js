@@ -4,9 +4,12 @@ const __MySqlQuery = require('./__MySqlQuery');
 class PgObject {
     f = {};
     selected = false;
+    __updatedFields = new Set();
+    __force = false;
 
     static __primaryKeys = [];
     static __requiredFields = [];
+    static __defaultFields = [];
 
     static __client;
     static __types = {
@@ -27,12 +30,12 @@ class PgObject {
         readUncommitted: 'READ UNCOMMITTED',
     }
 
-    constructor(data) {
+    constructor(data, force) {
         this.constructor.__setStaticFields();
         this.__createSchema();
-        if (data) {
-            this.__setValues(data);
-        }
+        data = data || {}
+        this.__setValues(data, force);
+        this.__setDefaultValues();
     }
 
     static get schema() {}
@@ -66,6 +69,9 @@ class PgObject {
             }
             if (this.schema[key].required) {
                 this.__requiredFields.push(key);
+            }
+            if (this.schema[key].default) {
+                this.__defaultFields.push(key)
             }
         }
 
@@ -103,15 +109,21 @@ class PgObject {
     }
 
     async insert() {
-        return PgObject.__queryClass.insert.call(this);
+        const res = PgObject.__queryClass.insert.call(this);
+        res.__updatedFields = new Set();
+        return res;
     }
 
     async update() {
-        return PgObject.__queryClass.update.call(this);
+        const res = PgObject.__queryClass.update.call(this);
+        res.__updatedFields = new Set();
+        return res;
     }
 
     async delete() {
-        return PgObject.__queryClass.delete.call(this);
+        const res = PgObject.__queryClass.delete.call(this);
+        res.__updatedFields = new Set();
+        return res;
     }
 
     async save() {
@@ -124,13 +136,26 @@ class PgObject {
         return this;
     }
 
-    __setValues(data) {
+    __setValues(data, force) {
+        this.__force = force;
         for (const key in data) {
             this.__validateSchema(key);
             if (this.constructor.schema[key]) {
                 this.f[key] = data[key];
             }
         }
+        this.__force = false;
+    }
+
+    __setDefaultValues() {
+        this.__force = true;
+        for (const key of this.constructor.__defaultFields) {
+            if (this.f[key] === undefined) {
+                this.f[key] = this.constructor.schema[key].default
+                this.__updatedFields.add(key)
+            }
+        }
+        this.__force = false;
     }
 
     __keysValues() {
@@ -143,6 +168,7 @@ class PgObject {
         let i = 1;
         for (const key in this.f) {
             if (this.f[key] === undefined) continue;
+            if (!this.__updatedFields.has(key)) continue;
             if (this.constructor.schema[key].primaryKey) continue;
             if (this.constructor.schema[key].computed) continue;
 
@@ -179,7 +205,6 @@ class PgObject {
     }
 
     __createSchema() {
-
         if (!this.constructor.schema) {
             throw "Error: please define your schema getter";
         }
@@ -192,18 +217,6 @@ class PgObject {
                     target[name] = {
                         value: undefined
                     }
-                }
-
-                if (target[name].default && typeof target[name].get === 'function') {
-                    return target[name].get(target[name].value, this.f, name) === undefined
-                        ? target[name].default
-                        : target[name].get(target[name].value, this.f, name);
-                }
-
-                if (target[name].default) {
-                    return target[name].value === undefined
-                        ? target[name].default
-                        : target[name].value;
                 }
 
                 if (typeof target[name].get === 'function') {
@@ -220,10 +233,14 @@ class PgObject {
                         value: undefined
                     }
                 }
-                if (target[name].set) {
+                if (typeof target[name].set === 'function' && !this.__force) {
                     target[name].value = target[name].set(value, this.f, name);
                 } else {
                     target[name].value = value;
+                }
+
+                if (!this.__force) {
+                    this.__updatedFields.add(name)
                 }
 
                 return true;

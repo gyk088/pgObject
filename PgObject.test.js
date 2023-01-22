@@ -51,10 +51,9 @@ describe('Test for PostgreSQL', () => {
         expect(query.mock.calls[0][0]).toMatch('SELECT * FROM admin WHERE name = $1 LIMIT 1');
         expect(query.mock.calls[0][1]).toContain('TestName');
 
-        expect(query.mock.calls[1][0]).toMatch('UPDATE admin SET id = $1, name = $2, surname = $3, ctime = $4 WHERE id = $5 RETURNING *');
+        expect(query.mock.calls[1][0]).toMatch('UPDATE admin SET name = $1, ctime = $2 WHERE id = $3 RETURNING *');
         expect(query.mock.calls[1][1]).toContain(1);
         expect(query.mock.calls[1][1]).toContain('NewValue');
-        expect(query.mock.calls[1][1]).toContain('TestSurname');
     });
 
     test("delete", async () => {
@@ -159,10 +158,9 @@ describe('Test for MySql', () => {
         expect(query.mock.calls[0][0]).toMatch('SELECT * FROM admin WHERE name = ? LIMIT 1');
         expect(query.mock.calls[0][1]).toContain('TestName');
 
-        expect(query.mock.calls[1][0]).toMatch('UPDATE admin SET id = ?, name = ?, surname = ?, ctime = ? WHERE id = ?');
+        expect(query.mock.calls[1][0]).toMatch('UPDATE admin SET name = ?, ctime = ? WHERE id = ?');
         expect(query.mock.calls[1][1]).toContain(1);
         expect(query.mock.calls[1][1]).toContain('NewValue');
-        expect(query.mock.calls[1][1]).toContain('TestSurname');
     });
 
     test("delete", async () => {

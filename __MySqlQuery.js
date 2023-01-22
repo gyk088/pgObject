@@ -12,7 +12,7 @@ class __MySqlQuery extends __IPgObjectQuery {
                     if (classObj) {
                         const arr = [];
                         for (const row of results) {
-                            const obj = new classObj(row);
+                            const obj = new classObj(row, true);
                             obj.selected = true;
                             arr.push(obj);
                         }

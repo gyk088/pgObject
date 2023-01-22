@@ -146,7 +146,7 @@ async function postgreSqlExample () {
     }, PgObject.mode.serializable);
 
 
-    // DELETE
+    // // DELETE
     const admins6 = await Admin.select();
     for (const adm of admins6) {
         await adm.delete();
