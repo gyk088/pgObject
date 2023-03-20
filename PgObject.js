@@ -61,6 +61,10 @@ class PgObject {
     static __setStaticFields() {
         if (this.__isSetStaticFields) return;
 
+        this.__primaryKeys = [];
+        this.__requiredFields = [];
+        this.__defaultFields = [];
+
         for (const key in this.schema) {
             if (!this.schema[key]) continue;
 
