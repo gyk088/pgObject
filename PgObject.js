@@ -281,7 +281,7 @@ class PgObject {
             objToJson[key] = this.f[key];
         }
 
-        return JSON.stringify(objToJson);
+        return objToJson;
     }
 }
 
