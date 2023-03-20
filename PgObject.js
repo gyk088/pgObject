@@ -46,7 +46,7 @@ class PgObject {
         PgObject.__client = client;
         PgObject.__queryClass = type ? PgObject.__types[type] : PgObject.__queryClass;
         if (!PgObject.__queryClass) {
-            throw `Error, please set corret type of database ${Object.keys(PgObject.__types).join(', ')}. By default ${Object.keys(PgObject.__types)[0]}`;
+            throw new Error(`Error, please set corret type of database ${Object.keys(PgObject.__types).join(', ')}. By default ${Object.keys(PgObject.__types)[0]}`);
         }
     }
 
@@ -80,7 +80,7 @@ class PgObject {
         }
 
         if (!this.__primaryKeys.length) {
-            throw `Error, please set the PRIMARY KEY in the ${this.name} class`;
+            throw new Error(`Error, please set the PRIMARY KEY in the ${this.name} class`);
         }
 
         this.__isSetStaticFields = true;
@@ -192,7 +192,7 @@ class PgObject {
         if (key in this.constructor.schema) {
             return true;
         }
-        throw `Error, ${key} is not in the schema, check your schema getter, or notValidateSchema should return true`;
+        throw new Error(`Error, ${key} is not in the schema, check your schema getter, or notValidateSchema should return true`);
     }
 
     __validateRequiredFields() {
@@ -204,13 +204,13 @@ class PgObject {
         }
 
         if (errorString) {
-            throw "Error: " + errorString;
+            throw new Error("Error: " + errorString);
         }
     }
 
     __createSchema() {
         if (!this.constructor.schema) {
-            throw "Error: please define your schema getter";
+            throw new Error("Error: please define your schema getter");
         }
 
         this.f = new Proxy(this.constructor.schema, {
