@@ -8,7 +8,7 @@ class __PgQuery extends __IPgObjectQuery {
             if (classObj) {
                 const arr = [];
                 for (const row of data.rows) {
-                    const obj = new classObj(row);
+                    const obj = new classObj(row, true);
                     obj.selected = true;
                     arr.push(obj);
                 }
