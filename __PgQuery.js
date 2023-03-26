@@ -49,9 +49,11 @@ class __PgQuery extends __IPgObjectQuery {
             keyVal.values.push(this.f[pk]);
         });
 
-        const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
-        const data = await this.constructor.query(updateStr, keyVal.values);
-        this.__setValues(data.rows[0], true);
+        if (updateArr?.length) {
+            const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
+            const data = await this.constructor.query(updateStr, keyVal.values);
+            this.__setValues(data.rows[0], true);
+        }
 
         return this;
     }

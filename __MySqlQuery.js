@@ -59,9 +59,10 @@ class __MySqlQuery extends __IPgObjectQuery {
             where.push(`${pk} = \$${i}`);
             keyVal.values.push(this.f[pk]);
         });
-
-        const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')}`;
-        await this.constructor.query(updateStr, keyVal.values);
+        if (updateArr?.length) {
+            const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')}`;
+            await this.constructor.query(updateStr, keyVal.values);
+        }
 
         return this;
     }
