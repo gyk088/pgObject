@@ -1,584 +1,419 @@
-# pgObject - simple ORM for PostgreSQL and MySql
+# pgObject
 
-## For PostgreSQL orm is used with [PG][pg]
-## For MySQL orm is used with [mysql][mysql] or [mysql2][mysql2]
+A small ORM for PostgreSQL and MySQL. You describe a table as a class, then load, create, change and delete rows as objects. For anything more complex you write plain SQL.
 
-### [Exaple][example]
+- Works with [pg](https://node-postgres.com/) (PostgreSQL) and [mysql2](https://www.npmjs.com/package/mysql2) / [mysql](https://www.npmjs.com/package/mysql) (MySQL)
+- Saves only the fields you changed
+- Transactions that are safe with connection pools and concurrent requests
+- TypeScript types, ES modules and CommonJS
 
-### Quick Example (PostgreSQL). For MySql it works the same.
-#### 1. Create a table in the database:
-```SQL
-CREATE TABLE userExample (
-    id           SERIAL,
-    name         VARCHAR(60),
-    surname      VARCHAR(60),
-    email        VARCHAR(60),
-    token        VARCHAR(64),
-    createdDate  timestamp(6) with time zone,
+## Contents
 
-    PRIMARY KEY (id)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Defining a model](#defining-a-model)
+- [Working with objects](#working-with-objects)
+- [Queries](#queries)
+- [Transactions](#transactions)
+- [JSON](#json)
+- [Logging](#logging)
+- [TypeScript](#typescript)
+- [MySQL notes](#mysql-notes)
+- [API reference](#api-reference)
+- [Migration from 2.x to 3.0](#migration-from-2x-to-30)
+
+## Installation
+
+Install pgObject together with the driver for your database:
+
+```bash
+npm install pgobject pg        # PostgreSQL
+npm install pgobject mysql2    # MySQL
+```
+
+Requires Node.js 16 or newer. Both import styles work and give the same class:
+
+```js
+import PgObject from 'pgobject';       // or: import { PgObject } from 'pgobject';
+const PgObject = require('pgobject');
+```
+
+## Quick start
+
+**1. A table:**
+
+```sql
+CREATE TABLE users (
+    id          SERIAL PRIMARY KEY,
+    name        VARCHAR(60),
+    email       VARCHAR(60) NOT NULL,
+    created_at  TIMESTAMPTZ
 );
 ```
-#### 2. Create a class:
-```js
-const PgObject = require('pgobject');
 
-class UserExample extends PgObject {
+**2. A model for it:**
+
+```js
+import PgObject from 'pgobject';
+
+class User extends PgObject {
     static get schema() {
         return {
-            id: {
-                pk: true,
-            },
+            id: { pk: true },
             name: {},
-            surname: {},
-            email: {
-                required: true,
-            },
-            token: {},
-            createdDate: {
-                default: new Date(),
-            }
-        }
+            email: { required: true },
+            created_at: { default: new Date() },
+        };
     }
 
     static get table() {
-        return 'userExample';
+        return 'users';
     }
 }
 ```
 
-#### 3. pgObject configuration:
-##### PostgreSQL:
-```js
-const { Client } = require('pg');
-const PgObject = require('pgobject');
+**3. Connect once at startup:**
 
-const client = new Client({
-    user: process.env.DB_USER,
+```js
+import pg from 'pg';
+
+const pool = new pg.Pool({
     host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
-    password: process.env.DB_PASS,
     port: process.env.DB_PORT,
-});
-
-await client.connect();
-
-PgObject.setClient(client);
-```
-##### MySQl:
-```js
-const mysql = require('mysql2');
-const PgObject = require('pgobject');
-
-const client = mysql.createConnection({
     user: process.env.DB_USER,
-    host: process.env.DB_HOST,
-    database: process.env.DB_NAME,
     password: process.env.DB_PASS,
-    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
 });
 
-PgObject.setClient(client, 'mysql');
+PgObject.setClient(pool);
 ```
 
-#### 4. Use this class:
+For MySQL, pass the connection or pool and `'mysql'`:
+
 ```js
-const userExample = new UserExample({
-    name: "nameExample",
-    surname: "surnameExample",
-});
+import mysql from 'mysql2';
 
-console.log(userExample.f.name); // "nameExample"
-console.log(userExample.f.surname); // "surnameExample"
-
-await userExample.save(); // OR await userExample.insert();
-
-const users1 = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
-// OR await PgObject
-//    .query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample'], UserExample);
-
-console.log(users1[0].f.name); // "nameExample"
-console.log(users1[0].f.surname); // "surnameExample"
-
-users1[0].f.surname = "newSurname";
-await users1[0].save(); // OR await users1[0].update();
-
-const users2 = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
-console.log(users1[0].f.name); // "nameExample"
-console.log(users1[0].f.surname); // "newSurname"
-
-await users2[0].delete();
+PgObject.setClient(mysql.createPool({ /* same options */ }), 'mysql');
 ```
-## Query to DB
-#### 1. Static method `select`:
+
+**4. Use it:**
+
 ```js
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['nameExample']);
+// create
+const user = new User({ name: 'Ann', email: 'ann@example.com' });
+await user.save();                  // INSERT, user.f.id is now set
+
+// read
+const [found] = await User.select('WHERE email = $1', ['ann@example.com']);
+console.log(found.f.name);          // 'Ann'
+
+// update
+found.f.name = 'Anna';
+await found.save();                 // UPDATE users SET name = $1 WHERE id = $2
+
+// delete
+await found.delete();
 ```
-- `static select(String where, Array values)` - return array of UserExample objects;
-#### 2. Static method `query`:
-```js
-const users = await PgObject.query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample'], UserExample);
-// OR
- const users = await UserExample.query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample'], UserExample);
-```
-- `static query(String query, Array values, class PgObjecExtension)` - return array of UserExample objects;
+
+Field values live in `obj.f`. Read and assign them like normal properties.
+
+## Defining a model
+
+A model is a class that extends `PgObject` and defines two static getters:
+
+- `schema` returns an object with one entry per table column.
+- `table` returns the table name.
 
 ```js
-const users = await PgObject.query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample']);
-// OR
-const users = await UserExample.query("SELECT * FROM userExample WHERE name = $1 LIMIT 1", ['nameExample']);
-```
-- `static query(String query, Array values)` - see [pg query documentation][pgQuery]
-
-#### 3. Method `save`
-```js
- const user = new UserExample({
-    name: "nameExample",
-    surname: "surnameExample",
-});
-
-// in this case there will be an insert
-await user.save();
-user.f.name = "newName";
-// in this case there will be an update
-await user.save();
-```
--`save()` - depending on we saved this object in the database will be an `insert` or an `update`
-
-#### 4. Method `insert`
-```js
-const user = new UserExample({
-    name: "nameExample",
-    surname: "surnameExample",
-});
-
-await user.insert();
-```
--`insert()` - save this object to the database
-
-#### 5. Method `update`
-```js
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ["nameExample"]);
-users[0].f.name = "newName";
-
-await users[0].update();
-```
--`update()` - update this object in the database
-
-#### 5. Method `delete`
-```js
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ["nameExample"]);
-
-
-await users[0].delete();
-```
--`delete()` - delete this object from the database
-
-## PgObject class extension
-For the PgObject class extension we must define `static get schema()` and `static get table()`
-```js
-const PgObject = require('pgobject');
-
-class UserExample extends PgObject {
+class User extends PgObject {
     static get schema() {
         return {
-            id: {
-                pk: true,
-            },
-            name: {},
-            surname: {},
-            email: {
-                set (val, target, name) {
-                    if (target[name]) {
-                        return target[name];
-                    }
-                    return val;
-                },
-                required: true,
-            },
-            token: {
-                get (val, target, name) {
-                    if (!val) {
-                         Math.random().toString(36).substr(2);
-                    }
-                    return val;
-                },
-            },
-            createdDate: {
-                default: new Date(),
-            },
-            fullName: {
-                computed: true,
-                get (val, target, name) {
-                    return `${target['name']} ${target['surname']}`;
-                },
-            }
-        }
+            id:         { pk: true, guarded: true },
+            email:      { required: true, set: (value) => value.trim().toLowerCase() },
+            name:       {},
+            role:       { guarded: true, default: 'user' },
+            password:   { hidden: true },
+            created_at: { default: new Date() },
+            label:      { computed: true, get: (value, f) => `${f.name} <${f.email}>` },
+        };
     }
 
     static get table() {
-        return 'userExample';
-    }
-
-    static get notValidateSchema() {
-        // default return false
-        return true;
+        return 'users';
     }
 }
 ```
-#### 1. `static get schema()` - return object:
-- `pk: true` - PRIMARY KEY
-- `computed: true` - This is a calculated field - it does not exist in the database
-- `required: true` - This fied is required
-- `default: new Date()` - Default value
-- `get (val, target, name)` - val: current value, target: all fields, name: name of this field
-- `set (val, target, name)` - val: new value, target: all fields, name: name of this field
 
-`pk: true`:
-You should define at least one field as the primary key.
-If your schema doesn't have a primary key you will see an error.
-```console
-Error, please set the PRIMARY KEY in the UserExample class
-```
-`computed: true`:
-If you want to have a field that does not exist in the database table and will not participate in an insert or update, you must set a computed property.
-Example: fullName is computed field
+**List every column the table has.** `SELECT *` returns all of them, and a column that is not in the schema causes an error (`Error, extra is not in the schema ...`). To allow extra columns, see `notValidateSchema` below.
+
+### Field options
+
+| Option | What it does |
+|---|---|
+| `pk: true` | Primary key. Required on at least one field; several fields make a composite key. `update()` and `delete()` find the row by it. |
+| `required: true` | `insert()` and `update()` throw if the value is `undefined`, `null` or `''`. `0` and `false` are valid values. |
+| `default: value` | Value for **new** objects when the field is not given. Objects loaded from the database never get defaults. |
+| `computed: true` | The field does not exist in the table: it is never saved, but it is included in JSON. Usually combined with `get`. |
+| `guarded: true` | The field is ignored in constructor data. Use it for fields that users must not set themselves, like `id`, `role` or `is_admin`. Code can still assign them: `user.f.role = 'admin'`. |
+| `hidden: true` | The field is left out of `toJSON()`, for example password hashes and tokens. |
+| `get(value, f, name)` | Runs on every read. `value` is the stored value, `f` is all fields of the object, `name` is the field name. Returns what the reader gets. |
+| `set(value, f, name)` | Runs when you assign a value or pass it to the constructor, and returns the value to store. It does **not** run for data loaded from the database. |
+
+`default: new Date()` is evaluated each time an object is created, because the `schema` getter runs once per object. This holds only while `schema` is a getter. With `static schema = { ... }` the date would be computed once, when the class is defined.
+
+### Model settings
+
 ```js
-class UserExample extends PgObject {
-    static get schema() {
-        return {
-           ...
-            fullName: {
-                computed: true
-            }
-        }
-    }
-    ...
+class Log extends PgObject {
+    static get schema() { /* ... */ }
+    static get table() { return 'logs'; }          // can include a schema: 'audit.logs'
+    static get notValidateSchema() { return true; } // allow fields that are not in the schema
 }
+```
 
-const user = new UserExample({
-    fullName: 'Test Tets',
-    ...
+With `notValidateSchema`:
+- columns returned by the database that are not in the schema are ignored instead of throwing;
+- you can assign new fields in code (`log.f.extra = 1`), and they are saved too.
+
+Table and field names are put into SQL as written, so they must be plain identifiers (letters, digits, `_`, `$`). Other names throw an error.
+
+## Working with objects
+
+```js
+const user = new User({ name: 'Ann', email: 'ann@example.com' });
+```
+
+- `save()` runs `insert()` for a new object and `update()` for one loaded from the database. `obj.selected` is `true` once the object exists in the database.
+- `insert()`:
+  - inserts the fields that have values;
+  - on PostgreSQL, reloads the row from the database (`RETURNING *`), so generated ids and database defaults appear in `obj.f`;
+  - on MySQL, sets the auto-increment id only.
+- `update()`:
+  - sends **only the fields changed** since the object was loaded or last saved; if nothing changed, no query is sent;
+  - never changes the primary key, and always targets the row the object was loaded from, even if `obj.f.id` was reassigned.
+- `delete()` deletes the row by primary key. It throws if the primary key is empty.
+
+Constructor data usually comes from a request:
+
+```js
+const user = new User(req.body);  // guarded fields (id, role) are ignored
+await user.save();
+```
+
+Keys that are not in the schema throw an error unless the model has `notValidateSchema`. Keys like `__proto__` always throw.
+
+You can add your own methods and override the built-in ones:
+
+```js
+class Article extends PgObject {
+    // ...
+    static async getPublished() {
+        return Article.select('WHERE published_at IS NOT NULL ORDER BY published_at DESC');
+    }
+
+    async update() {
+        this.f.updated_at = new Date();
+        return super.update();
+    }
+}
+```
+
+## Queries
+
+### `Model.select(where, values)`
+
+Runs `SELECT * FROM <table> <where>` and returns an array of model objects:
+
+```js
+const all = await User.select();
+const admins = await User.select('WHERE role = $1 ORDER BY name LIMIT $2', ['admin', 10]);
+```
+
+> ⚠️ `where` is raw SQL. Never build it from user input. Pass input as `$1, $2, ...` placeholders and values:
+> ```js
+> await User.select(`WHERE name = '${req.query.name}'`);       // SQL injection
+> await User.select('WHERE name = $1', [req.query.name]);      // safe
+> ```
+
+### `PgObject.query(sql, values, Model)`
+
+Runs any SQL. With a model class as the third argument, the rows become model objects:
+
+```js
+const users = await PgObject.query(
+    'SELECT u.* FROM users u JOIN orders o ON o.user_id = u.id WHERE o.total > $1',
+    [100],
+    User
+);
+```
+
+Without a model it returns the driver result. For pg that is the [query result](https://node-postgres.com/apis/result), with rows in `.rows`:
+
+```js
+const { rows } = await PgObject.query('SELECT count(*) AS n FROM users');
+```
+
+Objects loaded from a query that selects only some columns can be changed and saved safely. The missing fields stay `undefined` and are not written.
+
+## Transactions
+
+```js
+const order = await PgObject.createTransaction(async () => {
+    const order = new Order({ user_id: user.f.id, total: 100 });
+    await order.save();
+    user.f.balance -= 100;
+    await user.save();
+    return order;
 });
-
-console.log(user.f.fullName); // 'Test Tets';
-
-// fullName will not save in the database
-await user.save();
 ```
-`required: true`:
-If you try to save your UserExample object to the database without values of the required fields  - you will see an error.
-Example: email is required field
+
+- Every query inside the callback runs in the transaction, including queries in functions it calls.
+- If the callback finishes, the transaction is committed and `createTransaction` returns the callback's result.
+- If the callback throws, the transaction is rolled back and **the error is thrown again**. Catch it where you handle errors:
+
 ```js
-class UserExample extends PgObject {
-    static get schema() {
-        return {
-           ...
-            email: {
-               required: true,
-            }
-        }
-    }
-    ...
+try {
+    await PgObject.createTransaction(async () => { /* ... */ });
+} catch (e) {
+    // nothing was saved
+}
+```
+
+How queries are isolated from other requests:
+- **With a pool** (`pg.Pool`, `mysql2.createPool`), each transaction gets its own connection, and concurrent requests do not interfere. A pool is the recommended setup for servers.
+- **With a single connection**, transactions run one at a time, and queries from outside wait until the current transaction ends.
+- A `createTransaction` inside another one becomes part of the outer transaction.
+
+Isolation level is the second argument. The default is `READ COMMITTED`:
+
+```js
+await PgObject.createTransaction(async () => { /* ... */ }, PgObject.mode.serializable);
+```
+
+| Level | Constant |
+|---|---|
+| `READ UNCOMMITTED` | `PgObject.mode.readUncommitted` |
+| `READ COMMITTED` (default) | `PgObject.mode.readCommitted` |
+| `REPEATABLE READ` | `PgObject.mode.repeatableRead` |
+| `SERIALIZABLE` | `PgObject.mode.serializable` |
+
+`PgObject.startTransaction()`, `commit()` and `rollback()` also exist, but they are low-level. They run on the shared connection with no protection from concurrent requests, and they throw when the client is a pool. Prefer `createTransaction`.
+
+## JSON
+
+`JSON.stringify(obj)` and `res.json(obj)` output all schema fields, including computed ones, except `hidden` fields:
+
+```js
+JSON.stringify(user); // {"id":1,"email":"ann@example.com","name":"Ann","role":"user",...}
+```
+
+To change the output, override `toJSON()` in the model.
+
+## Logging
+
+```js
+PgObject.setLog(true);
+await User.select('WHERE id = $1', [1]);
+// Query:  SELECT * FROM users WHERE id = $1
+// Values:  [ 1 ]
+// Execution time: 1 ms
+```
+
+> ⚠️ The log includes query values, so passwords and tokens end up in it. Use it for development only.
+
+When logging is off, nothing is logged at all: SQL errors are only thrown. To send logs somewhere other than the console, pass any object with a `log(...args)` method:
+
+```js
+PgObject.setLogger({ log: (...args) => myLogger.debug(...args) });
+```
+
+## TypeScript
+
+Types are included. Pass the field types to the model to get checked field access:
+
+```ts
+import { PgObject, type Schema } from 'pgobject';
+
+interface UserFields {
+    id: number;
+    email: string;
+    role: 'user' | 'admin';
 }
 
-const user = new UserExample({
-    name: "nameExample",
-    surname: "surnameExample",
-});
-
-await user.save();
-// console:
-// Error: email field in UserExample object is required;
-```
-`default: someDefaultValue`
-You can set default values for fields
-```js
-class UserExample extends PgObject {
-    static get schema() {
+class User extends PgObject<UserFields> {
+    static get schema(): Schema<UserFields> {
         return {
-           ...
-            name: {
-               default: 'Test',
-            }
-        }
+            id: { pk: true },
+            email: { required: true },
+            role: { default: 'user' },
+        };
     }
-    ...
+
+    static get table() {
+        return 'users';
+    }
 }
 
-const user = new UserExample();
-console.log(user.f.name); // 'Test';
-// the name field will save with the default value ('Test');
-await user.save();
-
-user.f.name = 'newValue';
-// the name field will save with the new value ('newValue');
-await user.save();
+const users = await User.select('WHERE role = $1', ['admin']); // User[]
+users[0].f.role = 'root';   // error: not 'user' | 'admin'
 ```
 
-`get (val, target, name)` - is like standart getter
-`val` - the current value of this field
-`target` - all fields of this object (this.f)
-`name` - string, name of this field
-Example:
-```js
-class UserExample extends PgObject {
-    static get schema() {
-        return {
-            id: {
-                pk: true,
-            },
-            name: {
-                default: 'TEST NAME',
-            },
-            surname: {
-                 get(val, target, name) {
-                    console.log('val:', val);
-                    console.log('target:', target);
-                    console.log('field name:', name);
-                    console.log('full name:', target.name, val);
-                    return `Surname - ${val}`;
-                }
-            },
-            ...
-    }
-    ...
-}
+Without the type parameter (`extends PgObject`) all fields are `any`. In a TypeScript project compiled to CommonJS, use the default import: `import PgObject from 'pgobject'`.
 
-const user = new UserExample();
-user.f.surname = 'SURNAME'
-const surname = user.f.surname;
-console.log(surname);
-// console:
-// val: SURNAME
-// target: {
-//  id: { pk: true },
-//  name: { default: 'TEST NAME' },
-//  surname: { get: [Function: get], value: 'SURNAME' },
-//  ...
-// }
-// field name: surname
-// full name: TEST NAME SURNAME
-// Surname - SURNAME
-```
+## MySQL notes
 
-`set (val, target, name)` - is like standart setter
-`val` - new value of this field
-`target` - all fields of this object (this.f)
-`name` - string, name of this field
-Example:
-```js
-class UserExample extends PgObject {
-    static get schema() {
-        return {
-            id: {
-                pk: true,
-            },
-            name: {
-                default: 'TEST NAME',
-            },
-            surname: {
-                 set(val, target, name) {
-                    console.log('val:', val);
-                    console.log('target:', target);
-                    console.log('field name:', name);
-                    console.log('full name:', target.name, val);
-                    return `Surname - ${val}`;
-                }
-            },
-            ...
-    }
-    ...
-}
+- Write placeholders as `$1, $2, ...`, the same as for PostgreSQL. They are converted to `?` with the values in the right order, and `$` inside string literals and comments is left alone. Plain `?` also works, but not mixed with `$N` in one query.
+- Object values are sent as JSON strings, so a request field like `{ "password": 1 }` can not turn into SQL.
+- `insert()` does not reload the row: only the auto-increment id is set on the object.
+- Use mysql2 3.24.6 or newer. Older versions have known critical vulnerabilities.
 
-const user = new UserExample();
-user.f.surname = 'NEW SURNAME';
-// console:
-// val: NEW SURNAME
-// target: {
-//  id: { pk: true },
-//  name: { default: 'TEST NAME' },
-//  surname: { set: [Function: set] },
-//  ...
-// }
-// name: surname
-// full name: TEST NAME NEW SURNAME
+## API reference
 
-// the surname field will save with the 'Surname - NEW SURNAME'  value ('newValue');
-await user.save();
-// console:
-// QueryLog:  INSERT INTO userExample ( name, surname ) VALUES ( $1, $2 ) RETURNING *
-// Values:  [ 'TEST NAME', 'Surname - NEW SURNAME' ]
-// Execution time: 1 ms
-```
+**Setup**
 
-#### 2. `static get table()` - return string with table name
-#### 3. `static get notValidateSchema()` - if return true - schema will be not validated
-By default you can't dynamically add fields. But be careful, if you add a field outside of your schema, you may have problems saving the object in the database.
-Example:
-```js
-const userExample = new UserExample();
-userExample.f.newfield = 'test';
-// console: if static get notValidateSchema() { return false } (by default)
-// Error, newfield is not in the schema, check your schema getter, or notValidateSchema should return true
-```
+| Method | Description |
+|---|---|
+| `PgObject.setClient(client, type?)` | Database client: pg `Client`/`Pool`, or mysql/mysql2 connection/pool with type `'mysql'`. The default type is `'postgresql'`. |
+| `PgObject.setLog(enabled)` | Log every query with its values. |
+| `PgObject.setLogger(logger)` | Object with a `log(...args)` method. The default is `console`. |
 
-## Display logs
-#### 1. `PgObject.setLog(true)` - enable the log
-If you want to see your queries to the database enable the log.
-```js
-PgObject.setLog(true);
-```
-And after that, you will see log in your console.
-Example:
-```js
-PgObject.setLog(true);
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
-// console:
-// QueryLog:  SELECT * FROM admin WHERE name = $1 LIMIT 1
-// Values:  [ 'newName' ]
-// Execution time: 1 ms
+**Queries and transactions**
 
-const user = new UserExample({
-    name: "nameExample",
-    surname: "surnameExample",
-});
+| Method | Returns |
+|---|---|
+| `Model.select(where?, values?)` | `Promise<Model[]>` |
+| `PgObject.query(sql, values?, Model?)` | `Promise<Model[]>` with a model, otherwise the driver result |
+| `PgObject.createTransaction(cb, mode?)` | `Promise` of the callback's result |
+| `PgObject.startTransaction(mode?)`, `commit()`, `rollback()` | Low-level, see [Transactions](#transactions) |
 
-await user.save();
-// console:
-// QueryLog:  INSERT INTO admin ( name, surname, ctime ) VALUES ( $1, $2, $3 ) RETURNING *
-// Values:  [ 'nameExample', 'surnameExample', 2022-09-29T13:04:34.257Z ]
-// Execution time: 1 ms
-```
+**Object methods**
 
-#### 2. `PgObject.setLogger(console)` - enable the log
-If you want use your own logger you can set yor logger.
-By default we use console.
-Example:
-```js
-const logger = {
-    log() {
-        console.log("MyLogger", arguments)
-    }
-};
+| Method | Description |
+|---|---|
+| `new Model(data?)` | Create an object. `data` is the field values. |
+| `obj.f` | Field values |
+| `obj.selected` | `true` if the object exists in the database |
+| `obj.save()` | `insert()` or `update()` |
+| `obj.insert()` / `obj.update()` / `obj.delete()` | Write to the database. Each returns the object. |
+| `obj.toJSON()` | Fields for JSON |
 
-PgObject.setLog(true);
-PgObject.setLogger(logger);
+**Overridable in a model:** `static get schema()`, `static get table()`, `static get notValidateSchema()`, `toJSON()`, and any instance method (`save`, `update`, ...).
 
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
-// console:
-// MyLogger [Arguments] {
-//   '0': '\x1B[32m',
-//   '1': 'Query: ',
-//   '2': 'DELETE FROM exapmleAdmin WHERE id = $1',
-//   '3': '\x1B[0m',
-//   '4': '\nValues: ',
-//   '5': [ 6 ],
-//   '6': '\nExecution time:',
-//   '7': 3,
-//   '8': 'ms'
-// }
-```
+A full working example is in [example.js](https://github.com/gyk088/pgObject/blob/main/example.js).
 
-## TO JSON
-If you want to serialize your object to JSON you can override `toJSON()` method;
-By default we serialize all fields in schema.
-Example:
-```js
-const users = await UserExample.select("WHERE name = $1 LIMIT 1", ['newName']);
-console.log(JSON.stringify(users));
-// console:
-// ["{\"id\":437,\"name\":\"TEST NAME\",\"createdDate\":\"2022-09-29T22:20:59.740Z\" ...]
-```
+## Migration from 2.x to 3.0
 
-## Transaction
-#### Quick Example
-```js
-PgObject.setLog(true);
-
-await PgObject.createTransaction(async () => {
-    const user1 = new UserExample();
-    user1.f.name = 'user1';
-    const user2 = new UserExample();
-    user2.f.name = 'user2';
-    await user1.save();
-    await user2.save();
-});
-// console:
-// QueryLog:  START TRANSACTION ISOLATION LEVEL READ UNCOMMITTED
-// Values:  undefined
-// Execution time: 1 ms
-// QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
-// Values:  [ 'user1', 2022-09-29T13:45:20.620Z ]
-// Execution time: 1 ms
-// QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
-// Values:  [ 'user2', 2022-09-29T13:45:20.620Z ]
-// Execution time: 1 ms
-// QueryLog:  COMMIT
-// Values:  undefined
-// Execution time: 1 ms
-```
-
-#### Transaction Isolation
-- `READ UNCOMMITTED` - PgObject.mode.readUncommitted (by default)
-- `READ COMMITTED` - PgObject.mode.readCommitted
-- `REPEATABLE READ` - PgObject.mode.repeatableRead
-- `SERIALIZABLE` - PgObject.mode.serializable
-
-example:
-```js
-PgObject.setLog(true);
-
-await PgObject.create(async () => {
-    const user1 = new UserExample();
-    user1.f.name = 'user1';
-    const user2 = new UserExample();
-    user2.f.name = 'user2';
-    await user1.save();
-    await user2.save();
-}, PgObject.mode.serializable);
-// console:
-// QueryLog:  START TRANSACTION ISOLATION LEVEL SERIALIZABLE
-// Values:  undefined
-// Execution time: 1 ms
-// QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
-// Values:  [ 'user1', 2022-09-29T13:45:20.620Z ]
-// Execution time: 1 ms
-// QueryLog:  INSERT INTO admin ( name, ctime ) VALUES ( $1, $2 ) RETURNING *
-// Values:  [ 'user2', 2022-09-29T13:45:20.620Z ]
-// Execution time: 1 ms
-// QueryLog:  COMMIT
-// Values:  undefined
-// Execution time: 1 ms
-```
-#### PgObject public methods:
-- `.insert()` - insert data.
-- `.update()` - update data.
-- `.delete()` - delete data.
-- `.save()` - insert or update data.
-#### PgObject static methods:
-- `PgObject.setClient(Object client, String type)` - set db client. client - db client, type - 'mysql' or 'postgresql', by default 'postgresql'.
-- `PgObject.setLog(Boolean log)` - if true, write a log to the console.
-- `PgObject.setLogger(Object logger)` - install your own logger.
-- `PgObject.query(String query, Array values, Class classObj)` - create a db query
-- `PgObject.select(String whereString, Array values)` - select data from db
-- `PgObject.createTransaction(Function cb, PgObject.mode mode)` - create a transaction. cb - function, mode - isolation level
-- `PgObject.startTransaction(PgObject.mode mode)` - start transaction. mode - isolation level
-- `PgObject.commit()` - commit transaction.
-- `PgObject.rollback()` - rollback transaction.
-
-#### PgObject override methods:
-- `static get schema() {}`
-- `static get table() {}`
-- `static get notValidateSchema() { }`
-- `toJSON() {}`
+- `createTransaction` throws the callback's error after rolling back (2.x only logged it), and returns the callback's result.
+- The default isolation level is `READ COMMITTED` (it was `READ UNCOMMITTED`).
+- MySQL transactions now actually start a transaction, so `rollback` works.
+- `update()` never changes primary keys, and targets the row the object was loaded from.
+- Objects loaded from the database do not get `default` values. In 2.x a missing column got its default, and `save()` wrote it over the real value.
+- `default: 0` and `default: false` now work (2.x ignored falsy defaults). `required` accepts `0` and `false`.
+- SQL errors are not logged when logging is off.
+- `pg` and `mysql2` are no longer installed with pgObject: install the driver yourself.
+- Field names `__proto__`, `constructor` and `prototype` are not allowed, and data with such keys throws.
+- `import { PgObject } from 'pgobject'` works, but deep imports like `require('pgobject/PgObject.js')` do not.
 
 ## License
+
 MIT
-
-
-[pg]: https://node-postgres.com/
-[mysql]: https://www.npmjs.com/package/mysql
-[mysql2]: https://www.npmjs.com/package/mysql2
-[pgQuery]: https://node-postgres.com/features/queries
-[example]: https://github.com/gyk088/pgObject/blob/main/example.js

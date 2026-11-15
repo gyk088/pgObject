@@ -1,0 +1,11 @@
+{
+  "compilerOptions": {
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2022",
+    "strict": true,
+    "noEmit": true,
+    "types": []
+  },
+  "files": ["types.test.mts", "types.test.cts", "PgObject.d.ts", "index.d.mts"]
+}

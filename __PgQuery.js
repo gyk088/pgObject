@@ -1,36 +1,30 @@
 const __IPgObjectQuery = require('./__IPgObjectQuery');
 
 class __PgQuery extends __IPgObjectQuery {
-    static async query(queryStr, values, classObj) {
-        try {
-            const data = await this.__client.query(queryStr, values);
+    static async query(client, queryStr, values, classObj) {
+        const data = await client.query(queryStr, values);
 
-            if (classObj) {
-                const arr = [];
-                for (const row of data.rows) {
-                    const obj = new classObj(row, true);
-                    obj.selected = true;
-                    arr.push(obj);
-                }
-
-                return arr;
-            }
-
-            return data;
-        } catch (e) {
-            throw e;
+        if (classObj) {
+            return __IPgObjectQuery.toObjects(data.rows, classObj);
         }
+
+        return data;
     }
 
     static async insert() {
         this.__validateRequiredFields();
 
-        const keyVal = this.__keysValues();
-        const insertStr = `INSERT INTO ${this.constructor.table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
+        const keyVal = this.__keysValues(false);
+        const table = this.constructor.table;
+        const insertStr = keyVal.keys.length
+            ? `INSERT INTO ${table} ( ${keyVal.keys.join(', ')} ) VALUES ( ${keyVal.counts.join(', ')} ) RETURNING *`
+            : `INSERT INTO ${table} DEFAULT VALUES RETURNING *`;
 
         const data = await this.constructor.query(insertStr, keyVal.values);
-        this.__setValues(data.rows[0], true);
-        this.selected = true;
+        if (data && data.rows && data.rows[0]) {
+            this.__setValues(data.rows[0], true);
+        }
+        this.__markPersisted();
 
         return this;
     }
@@ -38,20 +32,16 @@ class __PgQuery extends __IPgObjectQuery {
     static async update() {
         this.__validateRequiredFields();
 
-        const keyVal = this.__keysValues();
+        // primary keys are never changed by update()
+        const keyVal = this.__keysValues(true);
+        if (!keyVal.keys.length) return this;
+
         const updateArr = keyVal.keys.map((k, i) => `${k} = ${keyVal.counts[i]}`);
+        const pk = this.__pkCondition(keyVal.keys.length);
 
-        let i = keyVal.counts.length;
-        const where = []
-        this.constructor.__primaryKeys.forEach(pk => {
-            i++;
-            where.push(`${pk} = \$${i}`);
-            keyVal.values.push(this.f[pk]);
-        });
-
-        if (updateArr?.length) {
-            const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${where.join(' AND ')} RETURNING *`;
-            const data = await this.constructor.query(updateStr, keyVal.values);
+        const updateStr = `UPDATE ${this.constructor.table} SET ${updateArr.join(', ')} WHERE ${pk.where} RETURNING *`;
+        const data = await this.constructor.query(updateStr, [...keyVal.values, ...pk.values]);
+        if (data && data.rows && data.rows[0]) {
             this.__setValues(data.rows[0], true);
         }
 
@@ -59,11 +49,7 @@ class __PgQuery extends __IPgObjectQuery {
     }
 
     static async startTransaction(mode) {
-        if (Object.values(this.mode).indexOf(mode) === -1) {
-            mode = this.mode.readUncommitted;
-        }
-
-        await this.query(`START TRANSACTION ISOLATION LEVEL ${mode}`);
+        await this.query(`START TRANSACTION ISOLATION LEVEL ${__IPgObjectQuery.isolationLevel.call(this, mode)}`);
     }
 }
 

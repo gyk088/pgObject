@@ -129,7 +129,7 @@ async function postgreSqlExample () {
         await admin4.save();
     await PgObject.rollback();
 
-    PgObject.createTransaction(async () => {
+    await PgObject.createTransaction(async () => {
         const admin1 = new Admin({
             name: 'TestName1',
             surname: 'TestSurname1'
@@ -137,7 +137,7 @@ async function postgreSqlExample () {
         await admin1.save();
     })
 
-    PgObject.createTransaction(async () => {
+    await PgObject.createTransaction(async () => {
         const admin = new Admin({
             name: 'TestName1',
             surname: 'TestSurname1'
@@ -210,7 +210,7 @@ async function mySqlExample () {
     const data2 = await PgObject.query("SELECT * FROM exapmleAdmin WHERE name = $1 LIMIT 1", ['TEST NAME']);
 
     // Transaction
-    PgObject.createTransaction(async () => {
+    await PgObject.createTransaction(async () => {
         const admin1 = new Admin({
             name: 'TestName1',
             surname: 'TestSurname1'
@@ -218,7 +218,7 @@ async function mySqlExample () {
         await admin1.save();
     })
 
-    PgObject.createTransaction(async () => {
+    await PgObject.createTransaction(async () => {
         const admin = new Admin({
             name: 'TestName1',
             surname: 'TestSurname1'

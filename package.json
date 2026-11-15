@@ -1,10 +1,33 @@
 {
   "name": "pgobject",
-  "version": "2.0.12",
+  "version": "3.0.0",
   "description": "pgObject - simple ORM for PostgreSQL and MySql",
   "main": "PgObject.js",
+  "types": "./PgObject.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./index.d.mts",
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./PgObject.d.ts",
+        "default": "./PgObject.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "PgObject.js",
+    "__IPgObjectQuery.js",
+    "__PgQuery.js",
+    "__MySqlQuery.js",
+    "index.mjs",
+    "PgObject.d.ts",
+    "index.d.mts"
+  ],
   "scripts": {
-    "test": "jest"
+    "test": "jest && node --test esm.test.mjs && tsc -p tsconfig.json"
   },
   "repository": {
     "type": "git",
@@ -20,16 +43,27 @@
     "Postgres",
     "SQL",
     "MySql",
-    "TRANSACTION"
+    "TRANSACTION",
+    "TypeScript"
   ],
   "author": "Andrey Zhuk <gyk088@gmail.com>",
   "license": "MIT",
   "homepage": "https://github.com/gyk088/pgObject",
-  "devDependencies": {
-    "jest": "^29.2.1"
-  },
-  "dependencies": {
-    "mysql2": "^2.3.3",
+  "peerDependencies": {
+    "mysql2": "^3.24.6",
     "pg": "^8.8.0"
+  },
+  "peerDependenciesMeta": {
+    "pg": {
+      "optional": true
+    },
+    "mysql2": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "jest": "^29.2.1",
+    "sqlstring": "^2.3.3",
+    "typescript": "^5.9.3"
   }
 }

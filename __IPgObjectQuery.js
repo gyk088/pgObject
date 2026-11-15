@@ -1,36 +1,34 @@
-const PgObject = require('./PgObject');
+// Methods of this class are called with `this` bound to a model class (static methods)
+// or to a model instance (insert/update/delete).
 class __IPgObjectQuery {
-    static async select(whereString, values) {
-        const data = await this.query(`SELECT * FROM ${this.table} ${whereString || '' }`, values);
+    static toObjects(rows, classObj) {
         const arr = [];
-
-        if (!data) return arr;
-        for (const row of data.rows) {
-            const obj = new this(row, true);
-            obj.selected = true;
+        for (const row of rows || []) {
+            const obj = new classObj(row, true);
+            obj.__markPersisted();
             arr.push(obj);
         }
 
         return arr;
     }
 
-    static async delete() {
-        const where = []
-        const values = []
-        let i = 0;
-        this.constructor.__primaryKeys.forEach(pk => {
-            i++;
-            where.push(`${pk} = \$${i}`);
-            values.push(this.f[pk]);
-        });
+    static async select(whereString, values) {
+        const data = await this.query(`SELECT * FROM ${this.table} ${whereString || '' }`, values);
+        if (!data) return [];
 
-        const deleteStr = `DELETE FROM ${this.constructor.table} WHERE ${where.join(' AND ')}`;
-        await this.constructor.query(deleteStr, values);
+        return __IPgObjectQuery.toObjects(data.rows, this);
+    }
+
+    static async delete() {
+        const pk = this.__pkCondition(0);
+        const deleteStr = `DELETE FROM ${this.constructor.table} WHERE ${pk.where}`;
+        await this.constructor.query(deleteStr, pk.values);
         this.selected = false;
+        this.__pk = null;
         return this;
     }
 
-    static query(queryStr, values, classObj) {};
+    static query(client, queryStr, values, classObj) {};
     static insert() {};
     static update() {};
 
@@ -41,6 +39,11 @@ class __IPgObjectQuery {
 
     static async rollback() {
         await this.query('ROLLBACK');
+    }
+
+    static isolationLevel(mode) {
+        // only the predefined levels can get into SQL
+        return Object.values(this.mode).includes(mode) ? mode : this.mode.readCommitted;
     }
 }
 
