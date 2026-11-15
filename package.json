@@ -1,7 +1,7 @@
 {
   "name": "pgobject",
   "version": "3.0.0",
-  "description": "pgObject - simple ORM for PostgreSQL and MySql",
+  "description": "Lightweight ORM for PostgreSQL and MySQL: models as classes, partial updates, safe transactions with connection pools, TypeScript types, ES modules and CommonJS",
   "main": "PgObject.js",
   "types": "./PgObject.d.ts",
   "exports": {
@@ -34,21 +34,32 @@
     "url": "https://github.com/gyk088/pgObject"
   },
   "keywords": [
-    "ORM",
-    "PostgreSQL",
-    "simple orm",
-    "pgObject",
-    "node ORM",
-    "js ORM",
-    "Postgres",
-    "SQL",
-    "MySql",
-    "TRANSACTION",
-    "TypeScript"
+    "orm",
+    "postgresql",
+    "postgres",
+    "pg",
+    "mysql",
+    "mysql2",
+    "sql",
+    "database",
+    "model",
+    "active-record",
+    "transaction",
+    "typescript",
+    "esm",
+    "lightweight",
+    "simple-orm",
+    "node-orm"
   ],
   "author": "Andrey Zhuk <gyk088@gmail.com>",
   "license": "MIT",
   "homepage": "https://github.com/gyk088/pgObject",
+  "bugs": {
+    "url": "https://github.com/gyk088/pgObject/issues"
+  },
+  "engines": {
+    "node": ">=16"
+  },
   "peerDependencies": {
     "mysql2": "^3.24.6",
     "pg": "^8.8.0"
