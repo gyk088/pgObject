@@ -54,6 +54,24 @@ export async function typedModel() {
     return { id, json, fromQuery, n };
 }
 
+export async function insertMany() {
+    const users: User[] = await User.insertMany([{ email: 'a@b.c' }, { email: 'd@e.f', role: 'admin' }]);
+    await User.insertMany([new User({ email: 'x@y.z' })], { chunkSize: 500 });
+    // @ts-expect-error wrong field type
+    await User.insertMany([{ email: 1 }]);
+    // @ts-expect-error unknown field
+    await User.insertMany([{ nope: 1 }]);
+    return users;
+}
+
+export async function updateMany() {
+    const users = await User.select();
+    const saved: User[] = await User.updateMany(users, { chunkSize: 100 });
+    // @ts-expect-error only model objects
+    await User.updateMany([{ email: 'a@b.c' }]);
+    return saved;
+}
+
 export async function transactions() {
     const total: number = await PgObject.createTransaction(async () => 42, PgObject.mode.serializable);
     const mode: TransactionMode = PgObject.mode.readCommitted;

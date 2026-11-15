@@ -129,6 +129,24 @@ class PgObject {
         this.__isSetStaticFields = true;
     }
 
+    // Warns once per model and column, so a big select does not flood the log.
+    // Only names are logged, never values.
+    static __warnUnknownColumn(column) {
+        if (!hasOwn(this, '__warnedColumns')) {
+            this.__warnedColumns = new Set();
+        }
+        if (this.__warnedColumns.has(column)) return;
+        this.__warnedColumns.add(column);
+
+        const logger = this.__logger;
+        const message = `pgobject warning: column "${column}" of table "${this.table}" is not in the ${this.name} schema and is ignored. Add it to the schema, or return true from notValidateSchema.`;
+        if (typeof logger.warn === 'function') {
+            logger.warn(message);
+        } else {
+            logger.log(message);
+        }
+    }
+
     static async query(queryStr, values, classObj) {
         const transaction = transactionStorage.getStore();
         let client;
@@ -173,6 +191,165 @@ class PgObject {
         }
         this.__setStaticFields();
         return PgObject.__queryClass.select.call(this, whereString, values);
+    }
+
+    // Inserts many rows with one INSERT ... VALUES (...), (...) per chunk.
+    // rows: plain data objects (like constructor data) or unsaved model objects.
+    static async insertMany(rows, options = {}) {
+        if (!Array.isArray(rows)) {
+            throw new Error(`Error: insertMany() of ${this.name} expects an array`);
+        }
+        this.__setStaticFields();
+
+        const objects = rows.map((row, i) => {
+            if (row instanceof PgObject) {
+                if (!(row instanceof this)) {
+                    throw new Error(`Error: insertMany() of ${this.name}: row ${i} is a ${row.constructor.name} object`);
+                }
+                if (row.selected) {
+                    throw new Error(`Error: insertMany() of ${this.name}: row ${i} is already saved`);
+                }
+                return row;
+            }
+            return new this(row);
+        });
+        if (!objects.length) return [];
+
+        // validate everything before the first query
+        objects.forEach(obj => obj.__validateRequiredFields());
+        const rowValues = objects.map(obj => {
+            const keyVal = obj.__keysValues(false);
+            return new Map(keyVal.keys.map((key, i) => [key, keyVal.values[i]]));
+        });
+        const columns = [];
+        for (const values of rowValues) {
+            for (const key of values.keys()) {
+                if (!columns.includes(key)) columns.push(key);
+            }
+        }
+
+        // PostgreSQL allows at most 65535 parameters in one query
+        const maxRows = Math.max(1, Math.floor(65535 / Math.max(columns.length, 1)));
+        const chunkSize = Math.min(options.chunkSize > 0 ? Math.floor(options.chunkSize) : 1000, maxRows);
+        const returning = PgObject.__queryClass.supportsReturning;
+
+        const run = async () => {
+            if (!columns.length) {
+                // no values at all: every row is all-defaults, VALUES can not express that
+                for (const obj of objects) await obj.insert();
+                return;
+            }
+            for (let start = 0; start < objects.length; start += chunkSize) {
+                const chunk = objects.slice(start, start + chunkSize);
+                const params = [];
+                const tuples = rowValues.slice(start, start + chunkSize).map(values => {
+                    const cells = columns.map(column => {
+                        // a missing value takes the column's DEFAULT, not NULL
+                        if (!values.has(column)) return 'DEFAULT';
+                        params.push(values.get(column));
+                        return `\$${params.length}`;
+                    });
+                    return `( ${cells.join(', ')} )`;
+                });
+
+                let sql = `INSERT INTO ${this.table} ( ${columns.join(', ')} ) VALUES ${tuples.join(', ')}`;
+                if (returning) sql += ' RETURNING *';
+                const data = await this.query(sql, params);
+
+                // PostgreSQL returns the rows of INSERT ... VALUES in the order of VALUES
+                const returned = returning && data && Array.isArray(data.rows) ? data.rows : [];
+                chunk.forEach((obj, i) => {
+                    if (returned[i]) obj.__setValues(returned[i], true);
+                    obj.__markPersisted();
+                    obj.__updatedFields.clear();
+                });
+            }
+        };
+
+        // several queries must succeed or fail together
+        if (objects.length > chunkSize || (!columns.length && objects.length > 1)) {
+            await this.createTransaction(run);
+        } else {
+            await run();
+        }
+
+        return objects;
+    }
+
+    // Saves the changes of many loaded objects with one UPDATE per group of rows that
+    // changed the same columns. Overridden instance update() methods are not called.
+    static async updateMany(objects, options = {}) {
+        if (!Array.isArray(objects)) {
+            throw new Error(`Error: updateMany() of ${this.name} expects an array`);
+        }
+        this.__setStaticFields();
+
+        // validate everything before the first query
+        const items = [];
+        const seen = new Set();
+        objects.forEach((obj, i) => {
+            if (!(obj instanceof this)) {
+                throw new Error(`Error: updateMany() of ${this.name}: row ${i} is not a ${this.name} object`);
+            }
+            if (!obj.selected) {
+                throw new Error(`Error: updateMany() of ${this.name}: row ${i} is not saved yet, use insert() or insertMany()`);
+            }
+            obj.__validateRequiredFields();
+            const keyVal = obj.__keysValues(true);
+            if (!keyVal.keys.length) return;
+
+            const pk = obj.__pkCondition(0).values;
+            const pkKey = JSON.stringify(pk);
+            if (seen.has(pkKey)) {
+                throw new Error(`Error: updateMany() of ${this.name}: row ${i} has the same primary key as an earlier row`);
+            }
+            seen.add(pkKey);
+            items.push({ obj, columns: keyVal.keys, values: keyVal.values, pk });
+        });
+        if (!items.length) return objects;
+
+        // one statement per set of changed columns, split by the parameter limit
+        const groups = new Map();
+        for (const item of items) {
+            const key = item.columns.join(',');
+            if (!groups.has(key)) groups.set(key, []);
+            groups.get(key).push(item);
+        }
+        const primaryKeys = this.__primaryKeys;
+        const chunks = [];
+        for (const group of groups.values()) {
+            const maxRows = Math.max(1, Math.floor(65535 / (primaryKeys.length + group[0].columns.length)));
+            const size = Math.min(options.chunkSize > 0 ? Math.floor(options.chunkSize) : 1000, maxRows);
+            for (let start = 0; start < group.length; start += size) {
+                chunks.push(group.slice(start, start + size));
+            }
+        }
+
+        const run = async () => {
+            for (const chunk of chunks) {
+                const rows = await PgObject.__queryClass.updateManyChunk.call(this, primaryKeys, chunk[0].columns, chunk);
+                // RETURNING order is not guaranteed for UPDATE, so rows are matched by primary key
+                if (rows && rows.length) {
+                    const byPk = new Map(chunk.map(item => [JSON.stringify(item.pk), item.obj]));
+                    for (const row of rows) {
+                        const obj = byPk.get(JSON.stringify(primaryKeys.map(pk => row[pk])));
+                        if (obj) obj.__setValues(row, true);
+                    }
+                }
+            }
+        };
+
+        // several statements must succeed or fail together
+        if (chunks.length > 1) {
+            await this.createTransaction(run);
+        } else {
+            await run();
+        }
+
+        for (const item of items) {
+            item.obj.__updatedFields.clear();
+        }
+        return objects;
     }
 
     async insert() {
@@ -247,6 +424,13 @@ class PgObject {
         this.__force = !!force;
         try {
             for (const key of Object.keys(data)) {
+                // A database column that is not in the schema (e.g. added by a migration
+                // before the code was updated) is skipped with a warning instead of failing.
+                if (force && !hasOwn(this.__schema, key)
+                    && (FORBIDDEN_KEYS.has(key) || !this.constructor.notValidateSchema)) {
+                    this.constructor.__warnUnknownColumn(key);
+                    continue;
+                }
                 this.__validateSchema(key);
                 const def = this.__fieldDef(key);
                 if (!def) continue;

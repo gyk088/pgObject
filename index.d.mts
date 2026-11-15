@@ -12,3 +12,5 @@ export type QueryResult<R = any> = PgObject.QueryResult<R>;
 export type Logger = PgObject.Logger;
 export type Client = PgObject.Client;
 export type ModelClass<M extends PgObject<any>> = PgObject.ModelClass<M>;
+export type FieldsOf<M> = PgObject.FieldsOf<M>;
+export type InsertManyOptions = PgObject.InsertManyOptions;

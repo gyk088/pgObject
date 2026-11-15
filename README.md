@@ -3,7 +3,7 @@
 A small ORM for PostgreSQL and MySQL. You describe a table as a class, then load, create, change and delete rows as objects. For anything more complex you write plain SQL.
 
 - Works with [pg](https://node-postgres.com/) (PostgreSQL) and [mysql2](https://www.npmjs.com/package/mysql2) / [mysql](https://www.npmjs.com/package/mysql) (MySQL)
-- Saves only the fields you changed
+- Saves only the fields you changed, inserts and updates many rows in one query
 - Transactions that are safe with connection pools and concurrent requests
 - TypeScript types, ES modules and CommonJS
 
@@ -20,6 +20,7 @@ A small ORM for PostgreSQL and MySQL. You describe a table as a class, then load
 - [TypeScript](#typescript)
 - [MySQL notes](#mysql-notes)
 - [API reference](#api-reference)
+- [Changes in 3.1](#changes-in-31)
 - [Migration from 2.x to 3.0](#migration-from-2x-to-30)
 
 ## Installation
@@ -144,7 +145,13 @@ class User extends PgObject {
 }
 ```
 
-**List every column the table has.** `SELECT *` returns all of them, and a column that is not in the schema causes an error (`Error, extra is not in the schema ...`). To allow extra columns, see `notValidateSchema` below.
+**Columns that are not in the schema are skipped.** If the database returns a column the schema does not list, for example one added by a migration before the code was updated, the query still works. The column is left out of the object, and a warning names it once per model:
+
+```
+pgobject warning: column "discount" of table "products" is not in the Product schema and is ignored. Add it to the schema, or return true from notValidateSchema.
+```
+
+Treat this warning as a reminder to add the column to the schema. Until you do, the model can not read or save it.
 
 ### Field options
 
@@ -172,7 +179,7 @@ class Log extends PgObject {
 ```
 
 With `notValidateSchema`:
-- columns returned by the database that are not in the schema are ignored instead of throwing;
+- columns returned by the database that are not in the schema are ignored without a warning;
 - you can assign new fields in code (`log.f.extra = 1`), and they are saved too.
 
 Table and field names are put into SQL as written, so they must be plain identifiers (letters, digits, `_`, `$`). Other names throw an error.
@@ -200,7 +207,44 @@ const user = new User(req.body);  // guarded fields (id, role) are ignored
 await user.save();
 ```
 
-Keys that are not in the schema throw an error unless the model has `notValidateSchema`. Keys like `__proto__` always throw.
+Keys that are not in the schema throw an error unless the model has `notValidateSchema`: unlike columns from the database, data passed by your code is expected to match the schema. Keys like `__proto__` always throw.
+
+### Inserting many rows
+
+`Model.insertMany(rows)` inserts an array of rows with one query and returns the saved objects:
+
+```js
+const items = await Product.insertMany([
+    { name: 'Apple', price: 10 },
+    { name: 'Pear' },              // price is not given: the column's DEFAULT is used
+]);
+console.log(items[0].f.id);        // ids are set (PostgreSQL)
+```
+
+- Each row is handled like constructor data: `guarded` fields are ignored, `set` and `default` apply. You can also pass unsaved model objects.
+- All rows are validated before the first query, so a bad row does not leave half of the data inserted.
+- Large arrays are split into chunks of 1000 rows (`{ chunkSize: 500 }` to change it, and never more than PostgreSQL's limit of 65535 values per query). Chunks run in one transaction: either all rows are inserted or none.
+- On PostgreSQL the returned objects get generated ids and database defaults. On MySQL generated ids are not available: re-select the rows if you need them.
+
+For 2000 rows this is about 9 times faster than calling `save()` in a loop on a local database, and more over a network.
+
+### Updating many rows
+
+`Model.updateMany(objects)` saves the changes of many loaded objects with one query:
+
+```js
+const products = await Product.select('WHERE category = $1', ['fruit']);
+products.forEach(p => { p.f.price = p.f.price * 1.1; });
+await Product.updateMany(products);   // one UPDATE instead of one per product
+```
+
+- Like `update()`, it sends only changed fields, never changes primary keys, and targets the rows the objects were loaded from. Objects without changes are skipped.
+- Objects that changed different fields are grouped: one query per set of changed fields. Large arrays are split into chunks of 1000 rows (`{ chunkSize }`). Several queries run in one transaction.
+- All objects are validated before the first query (`required`, saved state, no duplicates).
+- On PostgreSQL the objects are refreshed from the database (`RETURNING`). Values are typed exactly as in `update()`; to do that, pgObject reads the table's column types once per model.
+- **Your own `update()` overrides are not called.** If a model sets fields there (for example `updated_at`), set them yourself before `updateMany`.
+
+For 2000 rows this is about 7 times faster than calling `save()` in a loop on a local database.
 
 You can add your own methods and override the built-in ones:
 
@@ -321,10 +365,15 @@ await User.select('WHERE id = $1', [1]);
 
 > ⚠️ The log includes query values, so passwords and tokens end up in it. Use it for development only.
 
-When logging is off, nothing is logged at all: SQL errors are only thrown. To send logs somewhere other than the console, pass any object with a `log(...args)` method:
+When logging is off, SQL errors are only thrown, not logged. The only thing logged regardless is the warning about [columns that are not in the schema](#defining-a-model); it contains names only, never values.
+
+To send logs somewhere other than the console, pass an object with a `log(...args)` method. Warnings go to `warn(...args)` when it exists, otherwise to `log`:
 
 ```js
-PgObject.setLogger({ log: (...args) => myLogger.debug(...args) });
+PgObject.setLogger({
+    log: (...args) => myLogger.debug(...args),
+    warn: (...args) => myLogger.warn(...args),
+});
 ```
 
 ## TypeScript
@@ -382,6 +431,8 @@ Without the type parameter (`extends PgObject`) all fields are `any`. In a TypeS
 | Method | Returns |
 |---|---|
 | `Model.select(where?, values?)` | `Promise<Model[]>` |
+| `Model.insertMany(rows, { chunkSize? })` | `Promise<Model[]>`, saved objects |
+| `Model.updateMany(objects, { chunkSize? })` | `Promise<Model[]>`, the same objects |
 | `PgObject.query(sql, values?, Model?)` | `Promise<Model[]>` with a model, otherwise the driver result |
 | `PgObject.createTransaction(cb, mode?)` | `Promise` of the callback's result |
 | `PgObject.startTransaction(mode?)`, `commit()`, `rollback()` | Low-level, see [Transactions](#transactions) |
@@ -400,6 +451,13 @@ Without the type parameter (`extends PgObject`) all fields are `any`. In a TypeS
 **Overridable in a model:** `static get schema()`, `static get table()`, `static get notValidateSchema()`, `toJSON()`, and any instance method (`save`, `update`, ...).
 
 A full working example is in [example.js](https://github.com/gyk088/pgObject/blob/main/example.js).
+
+## Changes in 3.1
+
+- Columns returned by the database that are not in the schema no longer make queries fail. They are skipped, and a warning with the column name is logged once per model. This makes it safe to run migrations that add columns before deploying the new code.
+- `setLogger()` accepts an optional `warn(...args)` method for warnings.
+- New `Model.insertMany(rows)`: inserts many rows with one query per chunk, in one transaction. See [Inserting many rows](#inserting-many-rows).
+- New `Model.updateMany(objects)`: saves the changes of many loaded objects with one query per set of changed fields. See [Updating many rows](#updating-many-rows).
 
 ## Migration from 2.x to 3.0
 

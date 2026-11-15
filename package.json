@@ -1,6 +1,6 @@
 {
   "name": "pgobject",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Lightweight ORM for PostgreSQL and MySQL: models as classes, partial updates, safe transactions with connection pools, TypeScript types, ES modules and CommonJS",
   "main": "PgObject.js",
   "types": "./PgObject.d.ts",

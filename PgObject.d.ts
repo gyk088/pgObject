@@ -38,6 +38,8 @@ declare namespace PgObject {
 
     interface Logger {
         log(...args: any[]): void;
+        /** Used for warnings (unknown columns) if present, otherwise log(). */
+        warn?(...args: any[]): void;
     }
 
     /** pg Client/Pool, mysql/mysql2 connection/pool. */
@@ -46,6 +48,14 @@ declare namespace PgObject {
     }
 
     type ModelClass<M extends PgObject<any>> = new (data?: any, force?: boolean) => M;
+
+    /** Field types of a model: FieldsOf<User> is UserFields. */
+    type FieldsOf<M> = M extends PgObject<infer F> ? F : never;
+
+    interface InsertManyOptions {
+        /** Rows per INSERT query, 1000 by default. Chunks run in one transaction. */
+        chunkSize?: number;
+    }
 }
 
 /**
@@ -102,6 +112,30 @@ declare class PgObject<F extends object = Record<string, any>> {
      * `SELECT * FROM <table> <where>`. `where` is raw SQL: pass user input only through `$1, $2, ...` and `values`.
      */
     static select<M extends PgObject<any>>(this: PgObject.ModelClass<M>, where?: string, values?: readonly unknown[]): Promise<M[]>;
+
+    /**
+     * Inserts many rows with one query per chunk (1000 rows by default); several chunks run in one transaction.
+     * Rows are plain data (like constructor data: guarded/set/default apply) or unsaved model objects.
+     * Returns saved model objects. On PostgreSQL they get generated ids and database defaults;
+     * on MySQL generated ids are not available.
+     */
+    static insertMany<M extends PgObject<any>>(
+        this: PgObject.ModelClass<M>,
+        rows: ReadonlyArray<Partial<PgObject.FieldsOf<M>> | M>,
+        options?: PgObject.InsertManyOptions
+    ): Promise<M[]>;
+
+    /**
+     * Saves the changes of many loaded objects: one UPDATE per group of rows that changed the same
+     * columns (1000 rows per query by default); several queries run in one transaction.
+     * Unchanged objects are skipped. Overridden instance update() methods are NOT called.
+     * Returns the same objects. On PostgreSQL they are refreshed from the database.
+     */
+    static updateMany<M extends PgObject<any>>(
+        this: PgObject.ModelClass<M>,
+        objects: ReadonlyArray<M>,
+        options?: PgObject.InsertManyOptions
+    ): Promise<M[]>;
 
     /**
      * Runs cb in a transaction: commits if it succeeds, otherwise rolls back and throws the error again.

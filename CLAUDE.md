@@ -31,10 +31,14 @@ Tests need no database: the clients are mocks. The PG mock is `query(sql, values
 - `__schema` is the result of the `schema` getter, called once per instance. The getter returns a fresh object each time, so `default: new Date()` is evaluated per instance. Users rely on this, so do not cache the schema per class without handling it.
 - `__values` is an `Object.create(null)` store. Values are never written into the schema object.
 - `f` is a Proxy over `__values`. It applies the schema `get`/`set` functions and records changed fields in `__updatedFields`, except while `__force` is set.
-- `force = true` in the constructor means the data comes from the database. Such objects get no `default` values: a row loaded without some columns would otherwise overwrite them on `save()`.
+- `force = true` in the constructor means the data comes from the database. Columns from the database that are not in the schema are skipped with a once-per-column warning (`__warnUnknownColumn`: names only, logged even when `setLog` is off); unknown keys in data from code still throw. Such objects also get no `default` values: a row loaded without some columns would otherwise overwrite them on `save()`.
 - `__markPersisted()` snapshots the primary key into `__pk`. `UPDATE`/`DELETE` use that snapshot in `WHERE`, and `UPDATE` never puts primary keys into `SET`.
 
 **Per-class settings.** `__setStaticFields` caches primary, required and default fields on each model class. It checks `hasOwnProperty`, so a model that extends another model computes its own.
+
+**`insertMany`** lives in `PgObject.js`, not in the drivers: it builds model objects (constructor semantics), validates all of them before any query, then sends one `INSERT ... VALUES (...), (...)` per chunk, with `DEFAULT` for missing columns and at most 65535 parameters. More than one chunk runs inside `createTransaction`. Drivers declare `supportsReturning`; on PostgreSQL rows from `RETURNING *` are applied in VALUES order, on MySQL no ids come back.
+
+**`updateMany`** also lives in `PgObject.js`: it validates all objects, groups them by the set of changed columns, chunks by the 65535-parameter limit, and calls the driver's `updateManyChunk`. PostgreSQL builds `UPDATE ... FROM (VALUES ($1::type, ...)) AS v (...)`: the casts are required (VALUES parameters are otherwise text) and the types come from `pg_attribute` via `format_type(atttypid, NULL)`, cached per model as `__pgColumnTypes`. The type is taken without length on purpose: `::varchar(10)` would silently truncate. `RETURNING` rows are matched back by primary key, since UPDATE does not keep order. MySQL uses `UPDATE ... JOIN (SELECT ... UNION ALL ...)` and returns nothing; it has not been run against a real MySQL server. Overridden instance `update()` methods are not called.
 
 **Transactions.**
 - `createTransaction` with a pool (detected by `__isPool`: `getConnection`, or `connect` plus `totalCount`) takes a dedicated connection.

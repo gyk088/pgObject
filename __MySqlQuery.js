@@ -89,6 +89,9 @@ function sanitizeValue(value) {
 }
 
 class __MySqlQuery extends __IPgObjectQuery {
+    // no RETURNING: insertMany() can not read generated ids back
+    static supportsReturning = false;
+
     static query(client, queryStr, values, classObj) {
         // RETURNING is not supported by MySQL
         const prepared = convertPlaceholders(queryStr.replace(/\s+RETURNING\s+\*\s*;?\s*$/i, ''), values);
@@ -146,6 +149,25 @@ class __MySqlQuery extends __IPgObjectQuery {
         await this.constructor.query(updateStr, [...keyVal.values, ...pk.values]);
 
         return this;
+    }
+
+    // this = model class. items: [{ pk: [...], values: [...] }], all changing `columns`.
+    // The first SELECT names the columns of the derived table; MySQL has no RETURNING.
+    static async updateManyChunk(primaryKeys, columns, items) {
+        const all = [...primaryKeys, ...columns];
+        const params = [];
+        const selects = items.map((item, row) => {
+            const cells = [...item.pk, ...item.values].map((value, i) => {
+                params.push(value);
+                return row === 0 ? `\$${params.length} AS ${all[i]}` : `\$${params.length}`;
+            });
+            return `SELECT ${cells.join(', ')}`;
+        });
+
+        const on = primaryKeys.map(pk => `t.${pk} = v.${pk}`).join(' AND ');
+        const set = columns.map(column => `t.${column} = v.${column}`).join(', ');
+        await this.query(`UPDATE ${this.table} AS t JOIN (${selects.join(' UNION ALL ')}) AS v ON ${on} SET ${set}`, params);
+        return [];
     }
 
     static async startTransaction(mode) {
